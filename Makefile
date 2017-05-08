@@ -15,5 +15,5 @@ docker: build
 
 .PHONY: clean
 clean:
-	docker-compose stop
+	docker-compose stop -t 0
 	docker-compose rm -f
