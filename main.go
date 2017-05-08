@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/Devatoria/go-mesos-executor/container"
 	"github.com/Devatoria/go-mesos-executor/executor"
 
 	"github.com/Sirupsen/logrus"
@@ -9,7 +10,7 @@ import (
 )
 
 var (
-	container               string
+	containerName           string
 	docker                  string
 	dockerSocket            string
 	executorID              string
@@ -30,7 +31,15 @@ var rootCmd = &cobra.Command{
 	Short: "Custom Mesos Docker executor",
 	Run: func(cmd *cobra.Command, args []string) {
 		logrus.WithFields(logrus.Fields{"ExecutorID": executorID, "FrameworkID": frameworkID}).Info("Initializing an executor")
-		e := executor.NewExecutor(executorID, frameworkID)
+
+		// Prepare docker containerizer
+		c, err := container.NewDockerContainerizer(dockerSocket)
+		if err != nil {
+			logrus.Fatal("Unable to initialize containerizer: ", err)
+		}
+
+		// Create and run the executor
+		e := executor.NewExecutor(executorID, frameworkID, c)
 		if err := e.Execute(); err != nil {
 			logrus.Fatal("Error while running executor: ", err)
 		}
@@ -40,7 +49,8 @@ var rootCmd = &cobra.Command{
 func init() {
 	cobra.OnInitialize(readConfig)
 
-	rootCmd.PersistentFlags().StringVar(&container, "container", "", "Container name")
+	// Flags given by the agent when running th executor
+	rootCmd.PersistentFlags().StringVar(&containerName, "container", "", "Container name")
 	rootCmd.PersistentFlags().StringVar(&docker, "docker", "", "???")
 	rootCmd.PersistentFlags().StringVar(&dockerSocket, "docker_socket", "", "Docker socket path")
 	rootCmd.PersistentFlags().BoolVar(&help, "help", false, "???")

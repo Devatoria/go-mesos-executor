@@ -5,6 +5,8 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/Devatoria/go-mesos-executor/container"
+
 	"github.com/Sirupsen/logrus"
 	"github.com/mesos/mesos-go/api/v1/lib"
 	"github.com/mesos/mesos-go/api/v1/lib/encoding"
@@ -12,6 +14,7 @@ import (
 	"github.com/mesos/mesos-go/api/v1/lib/executor/calls"
 	"github.com/mesos/mesos-go/api/v1/lib/executor/events"
 	"github.com/mesos/mesos-go/api/v1/lib/httpcli"
+	"github.com/pborman/uuid"
 )
 
 const (
@@ -23,6 +26,7 @@ const (
 type Executor struct {
 	AgentInfo      mesos.AgentInfo
 	Cli            *httpcli.Client
+	Containerizer  container.Containerizer
 	ExecutorID     string
 	ExecutorInfo   mesos.ExecutorInfo
 	FrameworkID    string
@@ -33,7 +37,7 @@ type Executor struct {
 }
 
 // NewExecutor initializes a new executor with the given executor and framework ID
-func NewExecutor(executorID, frameworkID string) *Executor {
+func NewExecutor(executorID, frameworkID string, containerizer container.Containerizer) *Executor {
 	var e *Executor
 
 	apiURL := url.URL{
@@ -50,6 +54,7 @@ func NewExecutor(executorID, frameworkID string) *Executor {
 	// Prepare executor
 	e = &Executor{
 		Cli:            cli,
+		Containerizer:  containerizer,
 		ExecutorID:     executorID,
 		FrameworkID:    frameworkID,
 		FrameworkInfo:  mesos.FrameworkInfo{},
@@ -60,6 +65,7 @@ func NewExecutor(executorID, frameworkID string) *Executor {
 	// Add events handler
 	e.Handler = events.NewMux(
 		events.Handle(executor.Event_SUBSCRIBED, events.HandlerFunc(e.handleSubscribed)),
+		events.Handle(executor.Event_LAUNCH, events.HandlerFunc(e.handleLaunch)),
 	)
 
 	return e
@@ -118,6 +124,25 @@ func (e *Executor) handleSubscribed(ev *executor.Event) error {
 	return nil
 }
 
+// handleLaunch put given task in unacked tasks and launches it
+func (e *Executor) handleLaunch(ev *executor.Event) error {
+	logrus.Info("Handled LAUNCH event")
+	task := ev.GetLaunch().GetTask()
+	e.UnackedTasks[task.GetTaskID()] = task
+
+	// Launch container
+	err := e.Containerizer.ContainerRun("mesostest", task.GetContainer().GetDocker().GetImage())
+	if err != nil {
+		return err
+	}
+
+	// Update status to RUNNING
+	status := e.newStatus(task.GetTaskID())
+	status.State = mesos.TASK_RUNNING.Enum()
+
+	return e.updateStatus(status)
+}
+
 // getUnackedTasks returns a slice of unacked tasks
 func (e *Executor) getUnackedTasks() []mesos.TaskInfo {
 	var tasks []mesos.TaskInfo
@@ -136,4 +161,37 @@ func (e *Executor) getUnackedUpdates() []executor.Call_Update {
 	}
 
 	return updates
+}
+
+// newStatus returns a mesos task status generated for the given executor and task ID
+func (e *Executor) newStatus(taskID mesos.TaskID) mesos.TaskStatus {
+	return mesos.TaskStatus{
+		ExecutorID: &e.ExecutorInfo.ExecutorID,
+		Source:     mesos.SOURCE_EXECUTOR.Enum(),
+		TaskID:     taskID,
+		UUID:       []byte(uuid.NewRandom()),
+	}
+}
+
+// updateStatus updates the current status of the given executor and adds the update to the
+// unacked updates
+func (e *Executor) updateStatus(status mesos.TaskStatus) error {
+	// Prepare and do the call
+	u := calls.Update(status).With(
+		calls.Executor(e.ExecutorID),
+		calls.Framework(e.FrameworkID),
+	)
+	resp, err := e.Cli.Do(u)
+	if resp != nil {
+		defer resp.Close()
+	}
+
+	if err != nil {
+		return err
+	}
+
+	// Add current update to unacked updates until we handle the acknowledgment in events
+	e.UnackedUpdates[string(status.UUID)] = *u.Update
+
+	return nil
 }
