@@ -30,7 +30,7 @@ func NewDockerContainerizer(socket string) (*DockerContainerizer, error) {
 }
 
 // ContainerRun launches a new container with the given containerizer
-func (c *DockerContainerizer) ContainerRun(name, image string) error {
+func (c *DockerContainerizer) ContainerRun(name, image string) (string, error) {
 	container, err := c.Client.CreateContainer(docker.CreateContainerOptions{
 		Name: name,
 		Config: &docker.Config{
@@ -39,9 +39,18 @@ func (c *DockerContainerizer) ContainerRun(name, image string) error {
 	})
 
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	err = c.Client.StartContainer(container.ID, nil)
-	return err
+	if err != nil {
+		return "", err
+	}
+
+	return container.ID, nil
+}
+
+// ContainerStop stops the given container
+func (c *DockerContainerizer) ContainerStop(id string) error {
+	return c.Client.StopContainer(id, 0)
 }
