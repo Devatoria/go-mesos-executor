@@ -209,6 +209,7 @@ func (e *Executor) handleLaunch(ev *executor.Event) error {
 		CPUSharesLimit: cpuShares,
 		Image:          task.GetContainer().GetDocker().GetImage(),
 		MemoryLimit:    mem,
+		NetworkMode:    task.GetContainer().GetDocker().GetNetwork(),
 	}
 
 	// Launch container

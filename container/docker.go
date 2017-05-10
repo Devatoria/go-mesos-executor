@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/fsouza/go-dockerclient"
+	"github.com/mesos/mesos-go/api/v1/lib"
 )
 
 // DockerContainerizer represents a docker containerizer
@@ -31,11 +32,32 @@ func NewDockerContainerizer(socket string) (*DockerContainerizer, error) {
 
 // ContainerRun launches a new container with the given containerizer
 func (c *DockerContainerizer) ContainerRun(info Info) (string, error) {
+	// Define network mode
+	var networkMode string
+	switch info.NetworkMode {
+	case mesos.ContainerInfo_DockerInfo_HOST:
+		networkMode = "host"
+		break
+	case mesos.ContainerInfo_DockerInfo_BRIDGE:
+		networkMode = "bridge"
+		break
+	case mesos.ContainerInfo_DockerInfo_NONE:
+		networkMode = "none"
+		break
+	case mesos.ContainerInfo_DockerInfo_USER:
+		networkMode = "user"
+		break
+	}
+
+	// Prepare container
 	container, err := c.Client.CreateContainer(docker.CreateContainerOptions{
 		Config: &docker.Config{
 			CPUShares: int64(info.CPUSharesLimit),
 			Image:     info.Image,
 			Memory:    int64(info.MemoryLimit),
+		},
+		HostConfig: &docker.HostConfig{
+			NetworkMode: networkMode,
 		},
 	})
 
