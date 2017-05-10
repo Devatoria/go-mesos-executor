@@ -9,5 +9,4 @@ Custom Apache Mesos executor written in Go
 * Implement docker parameters
 ** Network mode
 ** Privileged
-** Memory/CPU limit
 ** Mounts
