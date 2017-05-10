@@ -7,6 +7,8 @@ Custom Apache Mesos executor written in Go
 * Find a way to send errors from executor to scheduler (eg. display custom message in Marathon UI debug tab)
 * Implement hooks manager
 * Implement docker parameters
-** Network mode
+** Commands
 ** Privileged
-** Mounts
+** Ports binding
+** Environment variables
+** Volumes
