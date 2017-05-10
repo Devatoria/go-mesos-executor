@@ -10,6 +10,7 @@ import (
 )
 
 var (
+	agentEndpoint           string
 	containerName           string
 	docker                  string
 	dockerSocket            string
@@ -39,7 +40,11 @@ var rootCmd = &cobra.Command{
 		}
 
 		// Create and run the executor
-		e := executor.NewExecutor(executorID, frameworkID, c)
+		e := executor.NewExecutor(executor.Config{
+			AgentEndpoint: agentEndpoint,
+			ExecutorID:    executorID,
+			FrameworkID:   frameworkID,
+		}, c)
 		if err := e.Execute(); err != nil {
 			logrus.Fatal("Error while running executor: ", err)
 		}
@@ -69,6 +74,9 @@ func readConfig() {
 	viper.SetConfigName("config")
 	viper.AddConfigPath("/etc/mesos-executor")
 	viper.AddConfigPath(".")
+
+	viper.BindEnv("agent_endpoint")
+	agentEndpoint = viper.GetString("agent_endpoint")
 
 	viper.BindEnv("executor_id")
 	executorID = viper.GetString("executor_id")

@@ -19,8 +19,9 @@ import (
 )
 
 const (
-	apiEndpoint = "/api/v1/executor"
-	timeout     = 10 * time.Second
+	apiEndpoint     = "/api/v1/executor" // Mesos agent endpoint used by the executor to communicate
+	cpuSharesPerCPU = 1024               // Default CPU shares per CPU
+	timeout         = 10 * time.Second   // Timeout to apply when calling agent API
 )
 
 // Executor represents an executor
@@ -39,6 +40,14 @@ type Executor struct {
 	UnackedUpdates map[string]executor.Call_Update    // Unacked updates (waiting for an acknowledgment from the agent)
 }
 
+// Config represents an executor config, containing arguments passed by the
+// agent and used to initialize a new executor
+type Config struct {
+	AgentEndpoint string
+	ExecutorID    string
+	FrameworkID   string
+}
+
 // ContainerTaskInfo represents a container linked to a task
 // This struct is used to store executor tasks with associated containers
 type ContainerTaskInfo struct {
@@ -46,13 +55,45 @@ type ContainerTaskInfo struct {
 	TaskInfo    mesos.TaskInfo
 }
 
+// getResource searches the given resource name in the given task
+// and returns it, or returns an error if the resource cannot be found
+func getResource(task mesos.TaskInfo, name string) (mesos.Resource, error) {
+	for _, resource := range task.GetResources() {
+		if resource.GetName() == name {
+			return resource, nil
+		}
+	}
+
+	return mesos.Resource{}, fmt.Errorf("Unable to find resource %s", name)
+}
+
+// getMemoryLimit returns the set memory limit (in MB) in the given task (or an error if unavailable)
+func getMemoryLimit(task mesos.TaskInfo) (uint64, error) {
+	resource, err := getResource(task, "mem")
+	if err != nil {
+		return 0, err
+	}
+
+	return uint64(resource.GetScalar().GetValue() * 1024 * 1024), nil
+}
+
+// getCPUSharesLimit returns the set CPU limit (in shares) in the given task (or an error if unavailable)
+func getCPUSharesLimit(task mesos.TaskInfo) (uint64, error) {
+	resource, err := getResource(task, "cpus")
+	if err != nil {
+		return 0, err
+	}
+
+	return uint64(resource.GetScalar().GetValue() * cpuSharesPerCPU), nil
+}
+
 // NewExecutor initializes a new executor with the given executor and framework ID
-func NewExecutor(executorID, frameworkID string, containerizer container.Containerizer) *Executor {
+func NewExecutor(config Config, containerizer container.Containerizer) *Executor {
 	var e *Executor
 
 	apiURL := url.URL{
 		Scheme: "http",
-		Host:   "localhost:5051", //TODO: get it from env (MESOS_AGENT_ENDPOINT)
+		Host:   config.AgentEndpoint,
 		Path:   apiEndpoint,
 	}
 	cli := httpcli.New(
@@ -64,9 +105,10 @@ func NewExecutor(executorID, frameworkID string, containerizer container.Contain
 	// Prepare executor
 	e = &Executor{
 		Cli:            cli,
+		ContainerTasks: make(map[mesos.TaskID]ContainerTaskInfo),
 		Containerizer:  containerizer,
-		ExecutorID:     executorID,
-		FrameworkID:    frameworkID,
+		ExecutorID:     config.ExecutorID,
+		FrameworkID:    config.FrameworkID,
 		FrameworkInfo:  mesos.FrameworkInfo{},
 		Shutdown:       false,
 		UnackedTasks:   make(map[mesos.TaskID]mesos.TaskInfo),
@@ -89,7 +131,7 @@ func NewExecutor(executorID, frameworkID string, containerizer container.Contain
 
 // Execute runs the executor workflow
 func (e *Executor) Execute() error {
-	for {
+	for e.Shutdown == false {
 		var err error
 		var resp mesos.Response
 
@@ -110,7 +152,7 @@ func (e *Executor) Execute() error {
 				continue
 			}
 
-			panic(err)
+			return err
 		}
 
 		// We are connected, we start to handle events
@@ -119,15 +161,20 @@ func (e *Executor) Execute() error {
 			decoder := encoding.Decoder(resp)
 			err = decoder.Decode(&event)
 			if err != nil {
-				panic(err)
+				return err
 			}
 
 			err = e.Handler.HandleEvent(&event)
 			if err != nil {
-				panic(err)
+				return err
 			}
 		}
 	}
+
+	// Now, executor is shutting down (every tasks have been killed)
+	logrus.Info("All tasks have been killed. Now exiting, bye bye.")
+
+	return nil
 }
 
 // handleSubscribed handles subscribed events
@@ -146,8 +193,26 @@ func (e *Executor) handleLaunch(ev *executor.Event) error {
 	task := ev.GetLaunch().GetTask()
 	e.UnackedTasks[task.GetTaskID()] = task
 
+	// Get task resources
+	mem, err := getMemoryLimit(task)
+	if err != nil {
+		return err
+	}
+
+	cpuShares, err := getCPUSharesLimit(task)
+	if err != nil {
+		return err
+	}
+
+	// Create container info
+	info := container.Info{
+		CPUSharesLimit: cpuShares,
+		Image:          task.GetContainer().GetDocker().GetImage(),
+		MemoryLimit:    mem,
+	}
+
 	// Launch container
-	containerID, err := e.Containerizer.ContainerRun("mesostest", task.GetContainer().GetDocker().GetImage())
+	containerID, err := e.Containerizer.ContainerRun(info)
 	if err != nil {
 		return err
 	}

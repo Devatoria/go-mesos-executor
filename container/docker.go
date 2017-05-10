@@ -30,11 +30,12 @@ func NewDockerContainerizer(socket string) (*DockerContainerizer, error) {
 }
 
 // ContainerRun launches a new container with the given containerizer
-func (c *DockerContainerizer) ContainerRun(name, image string) (string, error) {
+func (c *DockerContainerizer) ContainerRun(info Info) (string, error) {
 	container, err := c.Client.CreateContainer(docker.CreateContainerOptions{
-		Name: name,
 		Config: &docker.Config{
-			Image: image,
+			CPUShares: int64(info.CPUSharesLimit),
+			Image:     info.Image,
+			Memory:    int64(info.MemoryLimit),
 		},
 	})
 
