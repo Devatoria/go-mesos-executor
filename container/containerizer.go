@@ -16,4 +16,5 @@ type Info struct {
 	Image          string
 	MemoryLimit    uint64
 	NetworkMode    mesos.ContainerInfo_DockerInfo_Network
+	Privileged     bool
 }

@@ -19,7 +19,6 @@ You can access Marathon framework UI using your `http://<IP>:8080/`. Executor lo
 * Implement hooks manager
 * Implement docker parameters
 ** Commands
-** Privileged
 ** Ports binding
 ** Environment variables
 ** Volumes

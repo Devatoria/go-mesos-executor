@@ -58,6 +58,7 @@ func (c *DockerContainerizer) ContainerRun(info Info) (string, error) {
 		},
 		HostConfig: &docker.HostConfig{
 			NetworkMode: networkMode,
+			Privileged:  info.Privileged,
 		},
 	})
 

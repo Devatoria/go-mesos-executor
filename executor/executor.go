@@ -210,6 +210,7 @@ func (e *Executor) handleLaunch(ev *executor.Event) error {
 		Image:          task.GetContainer().GetDocker().GetImage(),
 		MemoryLimit:    mem,
 		NetworkMode:    task.GetContainer().GetDocker().GetNetwork(),
+		Privileged:     task.GetContainer().GetDocker().GetPrivileged(),
 	}
 
 	// Launch container
