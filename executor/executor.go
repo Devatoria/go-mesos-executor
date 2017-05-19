@@ -207,10 +207,8 @@ func (e *Executor) handleLaunch(ev *executor.Event) error {
 	// Create container info
 	info := container.Info{
 		CPUSharesLimit: cpuShares,
-		Image:          task.GetContainer().GetDocker().GetImage(),
 		MemoryLimit:    mem,
-		NetworkMode:    task.GetContainer().GetDocker().GetNetwork(),
-		Privileged:     task.GetContainer().GetDocker().GetPrivileged(),
+		TaskInfo:       task,
 	}
 
 	// Launch container

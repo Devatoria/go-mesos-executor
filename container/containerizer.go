@@ -13,8 +13,6 @@ type Containerizer interface {
 // Info represents container information such as image name, CPU/memory limits...
 type Info struct {
 	CPUSharesLimit uint64
-	Image          string
 	MemoryLimit    uint64
-	NetworkMode    mesos.ContainerInfo_DockerInfo_Network
-	Privileged     bool
+	TaskInfo       mesos.TaskInfo
 }

@@ -34,7 +34,7 @@ func NewDockerContainerizer(socket string) (*DockerContainerizer, error) {
 func (c *DockerContainerizer) ContainerRun(info Info) (string, error) {
 	// Define network mode
 	var networkMode string
-	switch info.NetworkMode {
+	switch info.TaskInfo.GetContainer().GetDocker().GetNetwork() {
 	case mesos.ContainerInfo_DockerInfo_HOST:
 		networkMode = "host"
 		break
@@ -53,12 +53,12 @@ func (c *DockerContainerizer) ContainerRun(info Info) (string, error) {
 	container, err := c.Client.CreateContainer(docker.CreateContainerOptions{
 		Config: &docker.Config{
 			CPUShares: int64(info.CPUSharesLimit),
-			Image:     info.Image,
+			Image:     info.TaskInfo.GetContainer().GetDocker().GetImage(),
 			Memory:    int64(info.MemoryLimit),
 		},
 		HostConfig: &docker.HostConfig{
 			NetworkMode: networkMode,
-			Privileged:  info.Privileged,
+			Privileged:  info.TaskInfo.GetContainer().GetDocker().GetPrivileged(),
 		},
 	})
 
