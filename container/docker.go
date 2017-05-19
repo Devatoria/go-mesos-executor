@@ -1,8 +1,11 @@
 package container
 
 import (
+	"fmt"
+	"strconv"
 	"strings"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/fsouza/go-dockerclient"
 	"github.com/mesos/mesos-go/api/v1/lib"
 )
@@ -49,6 +52,18 @@ func (c *DockerContainerizer) ContainerRun(info Info) (string, error) {
 		break
 	}
 
+	// Define ports mappings
+	portsMappings := make(map[docker.Port][]docker.PortBinding)
+	for _, mapping := range info.TaskInfo.GetContainer().GetDocker().GetPortMappings() {
+		containerPort := docker.Port(fmt.Sprintf("%d/%s", mapping.GetContainerPort(), mapping.GetProtocol())) // ContainerPort needs to have the form port/protocol (eg. 80/tcp)
+		hostPort := strconv.Itoa(int(mapping.HostPort))
+		portsMappings[containerPort] = []docker.PortBinding{
+			docker.PortBinding{
+				HostPort: hostPort,
+			},
+		}
+	}
+
 	// Prepare container
 	container, err := c.Client.CreateContainer(docker.CreateContainerOptions{
 		Config: &docker.Config{
@@ -57,8 +72,9 @@ func (c *DockerContainerizer) ContainerRun(info Info) (string, error) {
 			Memory:    int64(info.MemoryLimit),
 		},
 		HostConfig: &docker.HostConfig{
-			NetworkMode: networkMode,
-			Privileged:  info.TaskInfo.GetContainer().GetDocker().GetPrivileged(),
+			NetworkMode:  networkMode,
+			PortBindings: portsMappings,
+			Privileged:   info.TaskInfo.GetContainer().GetDocker().GetPrivileged(),
 		},
 	})
 
@@ -66,6 +82,11 @@ func (c *DockerContainerizer) ContainerRun(info Info) (string, error) {
 		return "", err
 	}
 
+	// Start the container
+	logrus.WithFields(logrus.Fields{
+		"NetworkMode":   networkMode,
+		"PortsMappings": portsMappings,
+	}).Debug("Starting docker container")
 	err = c.Client.StartContainer(container.ID, nil)
 	if err != nil {
 		return "", err
