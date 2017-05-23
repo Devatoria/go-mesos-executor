@@ -64,10 +64,19 @@ func (c *DockerContainerizer) ContainerRun(info Info) (string, error) {
 		}
 	}
 
+	// Define environment variables
+	// Docker needs to have a string slice with strings of the form key=val
+	var stringifiedEnv []string
+	environment := info.TaskInfo.Command.GetEnvironment().GetVariables()
+	for _, variable := range environment {
+		stringifiedEnv = append(stringifiedEnv, fmt.Sprintf("%s=%s", variable.GetName(), variable.GetValue()))
+	}
+
 	// Prepare container
 	container, err := c.Client.CreateContainer(docker.CreateContainerOptions{
 		Config: &docker.Config{
 			CPUShares: int64(info.CPUSharesLimit),
+			Env:       stringifiedEnv,
 			Image:     info.TaskInfo.GetContainer().GetDocker().GetImage(),
 			Memory:    int64(info.MemoryLimit),
 		},
