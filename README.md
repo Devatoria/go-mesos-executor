@@ -22,5 +22,6 @@ You can access Marathon framework UI using your `http://<IP>:8080/`. Executor lo
 ** Volumes
 ** Command health checks
 * Tests
+* Remove logrus to use zap
 
 The executor actually does not handle custom parameters sent to Docker CLI. This has to be done with a matching enum (I think) and it is actually a little bit boring to do this :)
