@@ -5,9 +5,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/Devatoria/go-mesos-executor/logger"
+
 	"github.com/fsouza/go-dockerclient"
 	"github.com/mesos/mesos-go/api/v1/lib"
+	"go.uber.org/zap"
 )
 
 // DockerContainerizer represents a docker containerizer
@@ -92,10 +94,10 @@ func (c *DockerContainerizer) ContainerRun(info Info) (string, error) {
 	}
 
 	// Start the container
-	logrus.WithFields(logrus.Fields{
-		"NetworkMode":   networkMode,
-		"PortsMappings": portsMappings,
-	}).Debug("Starting docker container")
+	logger.GetInstance().Development.Debug("Starting a docker container",
+		zap.String("networkMode", networkMode),
+		zap.Reflect("portsMappings", portsMappings),
+	)
 	err = c.Client.StartContainer(container.ID, nil)
 	if err != nil {
 		return "", err

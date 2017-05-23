@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/Devatoria/go-mesos-executor/container"
+	"github.com/Devatoria/go-mesos-executor/logger"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/mesos/mesos-go/api/v1/lib"
 	"github.com/mesos/mesos-go/api/v1/lib/encoding"
 	"github.com/mesos/mesos-go/api/v1/lib/executor"
@@ -16,6 +16,7 @@ import (
 	"github.com/mesos/mesos-go/api/v1/lib/executor/events"
 	"github.com/mesos/mesos-go/api/v1/lib/httpcli"
 	"github.com/pborman/uuid"
+	"go.uber.org/zap"
 )
 
 const (
@@ -172,14 +173,14 @@ func (e *Executor) Execute() error {
 	}
 
 	// Now, executor is shutting down (every tasks have been killed)
-	logrus.Info("All tasks have been killed. Now exiting, bye bye.")
+	logger.GetInstance().Production.Info("All tasks have been killed. Now exiting, bye bye.")
 
 	return nil
 }
 
 // handleSubscribed handles subscribed events
 func (e *Executor) handleSubscribed(ev *executor.Event) error {
-	logrus.Info("Handled SUBSCRIBED event")
+	logger.GetInstance().Production.Info("Handled SUBSCRIBED event")
 	e.AgentInfo = ev.GetSubscribed().GetAgentInfo()
 	e.ExecutorInfo = ev.GetSubscribed().GetExecutorInfo()
 	e.FrameworkInfo = ev.GetSubscribed().GetFrameworkInfo()
@@ -189,7 +190,7 @@ func (e *Executor) handleSubscribed(ev *executor.Event) error {
 
 // handleLaunch puts given task in unacked tasks and launches it
 func (e *Executor) handleLaunch(ev *executor.Event) error {
-	logrus.Info("Handled LAUNCH event")
+	logger.GetInstance().Production.Info("Handled LAUNCH event")
 	task := ev.GetLaunch().GetTask()
 	e.UnackedTasks[task.GetTaskID()] = task
 
@@ -232,13 +233,15 @@ func (e *Executor) handleLaunch(ev *executor.Event) error {
 
 // handleKill kills given task and updates status
 func (e *Executor) handleKill(ev *executor.Event) error {
-	logrus.Info("Handled KILL event")
+	logger.GetInstance().Production.Info("Handled KILL event")
 	taskID := ev.GetKill().GetTaskID()
 
 	// Get container ID associated to the given task
 	containerTaskInfo, ok := e.ContainerTasks[taskID]
 	if !ok {
-		logrus.WithField("TaskID", taskID.GetValue()).Warn("Unable to kill the given task (not found in running tasks)")
+		logger.GetInstance().Production.Warn("Error while killing the given task: task not found in running tasks",
+			zap.String("taskID", taskID.GetValue()),
+		)
 
 		return fmt.Errorf("%s task not found, unable to kill it", taskID.GetValue())
 	}
@@ -261,7 +264,7 @@ func (e *Executor) handleKill(ev *executor.Event) error {
 
 // handleAcknowledged removes the given task/update from unacked
 func (e *Executor) handleAcknowledged(ev *executor.Event) error {
-	logrus.Info("Handled ACKNOWLEDEGED event")
+	logger.GetInstance().Production.Info("Handled ACKNOWLEDGED event")
 
 	// Remove task/update from unacked
 	delete(e.UnackedTasks, ev.GetAcknowledged().GetTaskID())
@@ -272,18 +275,22 @@ func (e *Executor) handleAcknowledged(ev *executor.Event) error {
 
 // handleMessage receives a message from the scheduler and logs it
 func (e *Executor) handleMessage(ev *executor.Event) error {
-	logrus.WithField("message", string(ev.GetMessage().GetData())).Info("Handled MESSAGE event")
+	logger.GetInstance().Production.Info("Handled MESSAGE event",
+		zap.String("eventMessage", string(ev.GetMessage().GetData())),
+	)
 
 	return nil
 }
 
 // handleShutdown kills all tasks before shuting down the executor
 func (e *Executor) handleShutdown(ev *executor.Event) error {
-	logrus.Info("Handled SHUTDOWN event")
+	logger.GetInstance().Production.Info("Handled SHUTDOWN event")
 
 	// Kill all tasks
 	for taskID, containerTaskInfo := range e.ContainerTasks {
-		logrus.WithField("TaskID", taskID.GetValue()).Info("Killing task")
+		logger.GetInstance().Production.Info("Killing task",
+			zap.String("taskID", taskID.GetValue()),
+		)
 
 		// Stop container
 		err := e.Containerizer.ContainerStop(containerTaskInfo.ContainerID)
@@ -308,7 +315,7 @@ func (e *Executor) handleShutdown(ev *executor.Event) error {
 
 // handleError returns an error returned by the agent
 func (e *Executor) handleError(ev *executor.Event) error {
-	logrus.Info("Handled ERROR event")
+	logger.GetInstance().Production.Info("Handled ERROR event")
 
 	return fmt.Errorf("%s", ev.GetError().GetMessage())
 }

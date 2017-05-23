@@ -3,10 +3,11 @@ package main
 import (
 	"github.com/Devatoria/go-mesos-executor/container"
 	"github.com/Devatoria/go-mesos-executor/executor"
+	"github.com/Devatoria/go-mesos-executor/logger"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"go.uber.org/zap"
 )
 
 var (
@@ -31,12 +32,17 @@ var rootCmd = &cobra.Command{
 	Use:   "mesos-docker-executor",
 	Short: "Custom Mesos Docker executor",
 	Run: func(cmd *cobra.Command, args []string) {
-		logrus.WithFields(logrus.Fields{"ExecutorID": executorID, "FrameworkID": frameworkID}).Info("Initializing an executor")
+		logger.GetInstance().Production.Info("Initializing the executor",
+			zap.String("executorID", executorID),
+			zap.String("frameworkID", frameworkID),
+		)
 
 		// Prepare docker containerizer
 		c, err := container.NewDockerContainerizer(dockerSocket)
 		if err != nil {
-			logrus.Fatal("Unable to initialize containerizer: ", err)
+			logger.GetInstance().Production.Fatal("An error occured while initializing the containerizer",
+				zap.Error(err),
+			)
 		}
 
 		// Create and run the executor
@@ -46,7 +52,9 @@ var rootCmd = &cobra.Command{
 			FrameworkID:   frameworkID,
 		}, c)
 		if err := e.Execute(); err != nil {
-			logrus.Fatal("Error while running executor: ", err)
+			logger.GetInstance().Production.Fatal("An error occured while running the executor",
+				zap.Error(err),
+			)
 		}
 	},
 }
@@ -85,13 +93,16 @@ func readConfig() {
 	frameworkID = viper.GetString("framework_id")
 
 	if err := viper.ReadInConfig(); err != nil {
-		logrus.Fatal("Unable to read configuration file: ", err)
+		logger.GetInstance().Production.Fatal("An error occured while reading the configuration file",
+			zap.Error(err),
+		)
 	}
 }
 
 func main() {
-	logrus.SetLevel(logrus.InfoLevel)
 	if err := rootCmd.Execute(); err != nil {
-		logrus.Fatal("Unable to execute root command: ", err)
+		logger.GetInstance().Production.Fatal("An error occured while running the root command",
+			zap.Error(err),
+		)
 	}
 }
