@@ -19,7 +19,8 @@ You can access Marathon framework UI using your `http://<IP>:8080/`. Executor lo
 * Implement hooks manager
 * Implement docker parameters
 ** Commands
-** Ports binding
-** Environment variables
 ** Volumes
+** Command health checks
 * Tests
+
+The executor actually does not handle custom parameters sent to Docker CLI. This has to be done with a matching enum (I think) and it is actually a little bit boring to do this :)
