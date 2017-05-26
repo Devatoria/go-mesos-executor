@@ -194,12 +194,9 @@ func (s *ExecutorTestSuite) TestGetUnackedUpdates() {
 	assert.Nil(s.T(), s.executor.getUnackedUpdates())
 
 	// Add some tasks
-	callUpdate := executor.Call_Update{
-		Status: mesos.TaskStatus{},
-	}
-
-	s.executor.UnackedUpdates["fakeUUID"] = callUpdate
-	assert.Contains(s.T(), s.executor.getUnackedUpdates(), callUpdate)
+	status := s.callUpdate.GetStatus()
+	s.executor.UnackedUpdates[string(status.GetUUID())] = s.callUpdate
+	assert.Contains(s.T(), s.executor.getUnackedUpdates(), s.callUpdate)
 }
 
 // Check that generated status is as it should be
