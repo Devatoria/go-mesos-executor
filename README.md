@@ -12,6 +12,10 @@ If you want to test the executor, you can run `make docker`. It will create a ba
 
 You can access Marathon framework UI using your `http://<IP>:8080/`. Executor logs are in the `stderr` of the task sandbox. When finished, please run `make clean` to remove stack containers.
 
+## Run tests
+
+You can run unit tests using `make test`.
+
 ## TODO
 
 * Send TASK_FAILED to agent when throwing an error while running (eg. if we fail to run a container) (actually panic)
