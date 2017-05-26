@@ -72,6 +72,13 @@ func (s *ExecutorTestSuite) SetupTest() {
 	// Task information
 	s.taskInfo = mesos.TaskInfo{
 		TaskID: mesos.TaskID{Value: "fakeTaskID"},
+		Resources: []mesos.Resource{
+			mesos.Resource{
+				Name:   "mem",
+				Type:   mesos.SCALAR.Enum(),
+				Scalar: &mesos.Value_Scalar{Value: 512},
+			},
+		},
 	}
 
 	// Call update information
@@ -225,6 +232,18 @@ func (s *ExecutorTestSuite) TestUpdateStatus() {
 	assert.Empty(s.T(), s.executor.UnackedUpdates)         // Should be empty before updating status
 	assert.Nil(s.T(), s.executor.updateStatus(taskStatus)) // Should be nil (update OK)
 	assert.NotEmpty(s.T(), s.executor.UnackedUpdates)      // Should contain status update (waiting for an acknowledgment)
+}
+
+// Check that we retrieve the asked resource, or an error if missing
+func (s *ExecutorTestSuite) TestGetResource() {
+	// Should fail on missing resource
+	_, err := getResource(s.taskInfo, "missingResource")
+	assert.NotNil(s.T(), err)
+
+	// Should return the requested resource
+	res, err := getResource(s.taskInfo, "mem")
+	assert.Nil(s.T(), err)
+	assert.Equal(s.T(), s.taskInfo.GetResources()[0], res)
 }
 
 // Launch test suite
