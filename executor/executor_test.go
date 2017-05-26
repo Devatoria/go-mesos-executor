@@ -20,6 +20,7 @@ import (
 type ExecutorTestSuite struct {
 	suite.Suite
 	agentInfo     mesos.AgentInfo
+	callUpdate    executor.Call_Update
 	config        Config
 	executor      *Executor
 	executorInfo  mesos.ExecutorInfo
@@ -71,6 +72,13 @@ func (s *ExecutorTestSuite) SetupTest() {
 	// Task information
 	s.taskInfo = mesos.TaskInfo{
 		TaskID: mesos.TaskID{Value: "fakeTaskID"},
+	}
+
+	// Call update information
+	s.callUpdate = executor.Call_Update{
+		Status: mesos.TaskStatus{
+			UUID: []byte("fakeUUID"),
+		},
 	}
 }
 
@@ -133,6 +141,41 @@ func (s *ExecutorTestSuite) TestHandleError() {
 
 	// Handle fake event
 	assert.Error(s.T(), s.executor.handleError(&ev))
+}
+
+// Check that given task/update is removed from unacked
+func (s *ExecutorTestSuite) TestHandleAcknowledged() {
+	// Unacked should be empty
+	assert.Empty(s.T(), s.executor.UnackedTasks)
+	assert.Empty(s.T(), s.executor.UnackedUpdates)
+
+	// Add fake task/update
+	s.executor.UnackedTasks[s.taskInfo.TaskID] = s.taskInfo
+	s.executor.UnackedUpdates["fakeUUID"] = s.callUpdate
+
+	// Unacked should not be empty
+	assert.Contains(s.T(), s.executor.getUnackedTasks(), s.taskInfo)
+	assert.Contains(s.T(), s.executor.getUnackedUpdates(), s.callUpdate)
+
+	// Generate fake event
+	evAckTask := executor.Event_Acknowledged{
+		TaskID: s.taskInfo.TaskID,
+	}
+	ev1 := executor.Event{
+		Acknowledged: &evAckTask,
+	}
+	assert.Nil(s.T(), s.executor.handleAcknowledged(&ev1))
+	assert.Empty(s.T(), s.executor.getUnackedTasks())
+
+	status := s.callUpdate.GetStatus()
+	evAckUpdate := executor.Event_Acknowledged{
+		UUID: status.GetUUID(),
+	}
+	ev2 := executor.Event{
+		Acknowledged: &evAckUpdate,
+	}
+	assert.Nil(s.T(), s.executor.handleAcknowledged(&ev2))
+	assert.Empty(s.T(), s.executor.getUnackedUpdates())
 }
 
 // Check that we are receiving everything that we should
