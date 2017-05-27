@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/Devatoria/go-mesos-executor/container"
+	"github.com/Devatoria/go-mesos-executor/hook"
+	"github.com/Devatoria/go-mesos-executor/types"
 
 	"github.com/mesos/mesos-go/api/v1/lib"
 	"github.com/mesos/mesos-go/api/v1/lib/executor"
@@ -18,8 +20,12 @@ import (
 // Fake containerizer
 type FakeContainerizer struct{}
 
-func (f *FakeContainerizer) ContainerRun(container.Info) (string, error) {
+func (f *FakeContainerizer) ContainerCreate(container.Info) (string, error) {
 	return "fakeContainerID", nil
+}
+
+func (f *FakeContainerizer) ContainerRun(id string) error {
+	return nil
 }
 
 func (f *FakeContainerizer) ContainerStop(id string) error {
@@ -37,6 +43,7 @@ type ExecutorTestSuite struct {
 	executor      *Executor
 	executorInfo  mesos.ExecutorInfo
 	frameworkInfo mesos.FrameworkInfo
+	hookManager   *hook.Manager
 	memResource   mesos.Resource
 	server        *httptest.Server
 	taskInfo      mesos.TaskInfo
@@ -65,8 +72,11 @@ func (s *ExecutorTestSuite) SetupTest() {
 	// Containerizer
 	s.containerizer = &FakeContainerizer{}
 
+	// Hooks manager
+	s.hookManager = hook.NewManager([]string{})
+
 	// Executor
-	s.executor = NewExecutor(s.config, s.containerizer)
+	s.executor = NewExecutor(s.config, s.containerizer, s.hookManager)
 
 	// Agent information
 	s.agentInfo = mesos.AgentInfo{
@@ -254,7 +264,7 @@ func (s *ExecutorTestSuite) TestHandleKill() {
 	assert.Empty(s.T(), s.executor.UnackedUpdates)
 
 	// Add a fake running container task
-	s.executor.ContainerTasks[s.taskInfo.GetTaskID()] = ContainerTaskInfo{
+	s.executor.ContainerTasks[s.taskInfo.GetTaskID()] = &types.ContainerTaskInfo{
 		ContainerID: "fakeContainerID",
 		TaskInfo:    s.taskInfo,
 	}
@@ -292,7 +302,7 @@ func (s *ExecutorTestSuite) TestHandleShutdown() {
 	assert.Empty(s.T(), s.executor.UnackedUpdates)
 
 	// Add a fake running container task
-	s.executor.ContainerTasks[s.taskInfo.GetTaskID()] = ContainerTaskInfo{
+	s.executor.ContainerTasks[s.taskInfo.GetTaskID()] = &types.ContainerTaskInfo{
 		ContainerID: "fakeContainerID",
 		TaskInfo:    s.taskInfo,
 	}
