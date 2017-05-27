@@ -1,6 +1,3 @@
-/*
-	WE MUST DETAIL TEST RUN WITH DETAILED STEPS HERE
-*/
 package executor
 
 import (
