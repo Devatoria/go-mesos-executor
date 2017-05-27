@@ -10,11 +10,24 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/Devatoria/go-mesos-executor/container"
+
 	"github.com/mesos/mesos-go/api/v1/lib"
 	"github.com/mesos/mesos-go/api/v1/lib/executor"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
+
+// Fake containerizer
+type FakeContainerizer struct{}
+
+func (f *FakeContainerizer) ContainerRun(container.Info) (string, error) {
+	return "fakeContainerID", nil
+}
+
+func (f *FakeContainerizer) ContainerStop(id string) error {
+	return nil
+}
 
 // ExecutorTestSuite is a struct with all what we need to run the test suite
 type ExecutorTestSuite struct {
@@ -22,6 +35,7 @@ type ExecutorTestSuite struct {
 	agentInfo     mesos.AgentInfo
 	callUpdate    executor.Call_Update
 	config        Config
+	containerizer *FakeContainerizer
 	cpusResource  mesos.Resource
 	executor      *Executor
 	executorInfo  mesos.ExecutorInfo
@@ -51,8 +65,11 @@ func (s *ExecutorTestSuite) SetupTest() {
 		FrameworkID:   "fakeFrameworkID",
 	}
 
+	// Containerizer
+	s.containerizer = &FakeContainerizer{}
+
 	// Executor
-	s.executor = NewExecutor(s.config, nil)
+	s.executor = NewExecutor(s.config, s.containerizer)
 
 	// Agent information
 	s.agentInfo = mesos.AgentInfo{
@@ -194,6 +211,40 @@ func (s *ExecutorTestSuite) TestHandleAcknowledged() {
 	}
 	assert.Nil(s.T(), s.executor.handleAcknowledged(&ev2))
 	assert.Empty(s.T(), s.executor.getUnackedUpdates())
+}
+
+// Check that:
+// - a task is pushed in unacks
+// - a task is pushed in container tasks
+// - a status update (RUNNING) is pushed in unacks
+// - returns nil
+func (s *ExecutorTestSuite) TestHandleLaunch() {
+	// Unacked tasks/updates should be empty
+	assert.Empty(s.T(), s.executor.UnackedTasks)
+	assert.Empty(s.T(), s.executor.UnackedUpdates)
+
+	// Launch
+	evLaunch := executor.Event_Launch{
+		Task: s.taskInfo,
+	}
+	ev := executor.Event{
+		Launch: &evLaunch,
+	}
+	assert.Nil(s.T(), s.executor.handleLaunch(&ev))   // Should return nil (launch successful)
+	assert.NotEmpty(s.T(), s.executor.UnackedTasks)   // Should not be empty (task waiting for acknowledgment)
+	assert.NotEmpty(s.T(), s.executor.ContainerTasks) // Should not be empty (new running task for this container)
+
+	assert.NotEmpty(s.T(), s.executor.UnackedUpdates) // Should not be empty (TASK_RUNNING update)
+	var updateKey string
+	for k := range s.executor.UnackedUpdates {
+		updateKey = k
+		break
+	}
+	unackedUpdate := s.executor.UnackedUpdates[updateKey]
+	assert.Equal(s.T(), *mesos.TASK_RUNNING.Enum(), unackedUpdate.Status.GetState()) // Should be a TASK_RUNNIN update
+
+	containerTask := s.executor.ContainerTasks[s.taskInfo.GetTaskID()]
+	assert.Equal(s.T(), "fakeContainerID", containerTask.ContainerID) // Should be equal to the container ID
 }
 
 // Check that we are receiving everything that we should

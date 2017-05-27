@@ -26,7 +26,6 @@ You can run unit tests using `make test`.
   * Volumes
   * Command health checks
 * Tests
-  * handleLaunch
   * handleKill
   * handleShutdown
 
