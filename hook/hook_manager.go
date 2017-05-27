@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/Devatoria/go-mesos-executor/logger"
+	"github.com/Devatoria/go-mesos-executor/types"
 
 	"go.uber.org/zap"
 )
@@ -66,9 +67,9 @@ func (m *Manager) RegisterHooks(when string, hooks ...*Hook) error {
 }
 
 // RunPreCreateHooks runs all pre-create hooks of the given manager
-func (m *Manager) RunPreCreateHooks() error {
+func (m *Manager) RunPreCreateHooks(info *types.ContainerTaskInfo) error {
 	for _, hook := range m.PreCreateHooks {
-		err := hook.Execute()
+		err := hook.Execute(info)
 		if err != nil {
 			logger.GetInstance().Production.Error(fmt.Sprintf("%s pre-create hook has failed", hook.Name), zap.Error(err))
 
@@ -80,9 +81,9 @@ func (m *Manager) RunPreCreateHooks() error {
 }
 
 // RunPreRunHooks runs all pre-create hooks of the given manager
-func (m *Manager) RunPreRunHooks() error {
+func (m *Manager) RunPreRunHooks(info *types.ContainerTaskInfo) error {
 	for _, hook := range m.PreRunHooks {
-		err := hook.Execute()
+		err := hook.Execute(info)
 		if err != nil {
 			logger.GetInstance().Production.Error(fmt.Sprintf("%s pre-run hook has failed", hook.Name), zap.Error(err))
 
@@ -94,9 +95,9 @@ func (m *Manager) RunPreRunHooks() error {
 }
 
 // RunPostRunHooks runs all pre-create hooks of the given manager
-func (m *Manager) RunPostRunHooks() error {
+func (m *Manager) RunPostRunHooks(info *types.ContainerTaskInfo) error {
 	for _, hook := range m.PostRunHooks {
-		err := hook.Execute()
+		err := hook.Execute(info)
 		if err != nil {
 			logger.GetInstance().Production.Error(fmt.Sprintf("%s post-run hook has failed", hook.Name), zap.Error(err))
 
@@ -108,9 +109,9 @@ func (m *Manager) RunPostRunHooks() error {
 }
 
 // RunPreStopHooks runs all pre-create hooks of the given manager
-func (m *Manager) RunPreStopHooks() error {
+func (m *Manager) RunPreStopHooks(info *types.ContainerTaskInfo) error {
 	for _, hook := range m.PreStopHooks {
-		err := hook.Execute()
+		err := hook.Execute(info)
 		if err != nil {
 			logger.GetInstance().Production.Error(fmt.Sprintf("%s pre-stop hook has failed", hook.Name), zap.Error(err))
 
@@ -122,9 +123,9 @@ func (m *Manager) RunPreStopHooks() error {
 }
 
 // RunPostStopHooks runs all pre-create hooks of the given manager
-func (m *Manager) RunPostStopHooks() error {
+func (m *Manager) RunPostStopHooks(info *types.ContainerTaskInfo) error {
 	for _, hook := range m.PostStopHooks {
-		err := hook.Execute()
+		err := hook.Execute(info)
 		if err != nil {
 			logger.GetInstance().Production.Error(fmt.Sprintf("%s post-stop hook has failed", hook.Name), zap.Error(err))
 

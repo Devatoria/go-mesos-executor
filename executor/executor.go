@@ -9,6 +9,7 @@ import (
 	"github.com/Devatoria/go-mesos-executor/container"
 	"github.com/Devatoria/go-mesos-executor/hook"
 	"github.com/Devatoria/go-mesos-executor/logger"
+	"github.com/Devatoria/go-mesos-executor/types"
 
 	"github.com/mesos/mesos-go/api/v1/lib"
 	"github.com/mesos/mesos-go/api/v1/lib/encoding"
@@ -28,19 +29,19 @@ const (
 
 // Executor represents an executor
 type Executor struct {
-	AgentInfo      mesos.AgentInfo                    // AgentInfo contains agent info returned by the agent
-	Cli            *httpcli.Client                    // Cli is the mesos HTTP cli
-	ContainerTasks map[mesos.TaskID]ContainerTaskInfo // Running tasks
-	Containerizer  container.Containerizer            // Containerize to use to manage containers
-	ExecutorID     string                             // Executor ID returned by the agent when running the executor
-	ExecutorInfo   mesos.ExecutorInfo                 // Executor info returned by the agent after registration
-	FrameworkID    string                             // Framework ID returned by the agent when running the executor
-	FrameworkInfo  mesos.FrameworkInfo                // Framework info returned by the agent after registration
-	Handler        events.Handler                     // Handler to use to handle events
-	HookManager    *hook.Manager                      // Hooks manager
-	Shutdown       bool                               // Shutdown the executor (used to stop loop event and gently kill the executor)
-	UnackedTasks   map[mesos.TaskID]mesos.TaskInfo    // Unacked tasks (waiting for an acknowledgment from the agent)
-	UnackedUpdates map[string]executor.Call_Update    // Unacked updates (waiting for an acknowledgment from the agent)
+	AgentInfo      mesos.AgentInfo                           // AgentInfo contains agent info returned by the agent
+	Cli            *httpcli.Client                           // Cli is the mesos HTTP cli
+	ContainerTasks map[mesos.TaskID]*types.ContainerTaskInfo // Running tasks
+	Containerizer  container.Containerizer                   // Containerize to use to manage containers
+	ExecutorID     string                                    // Executor ID returned by the agent when running the executor
+	ExecutorInfo   mesos.ExecutorInfo                        // Executor info returned by the agent after registration
+	FrameworkID    string                                    // Framework ID returned by the agent when running the executor
+	FrameworkInfo  mesos.FrameworkInfo                       // Framework info returned by the agent after registration
+	Handler        events.Handler                            // Handler to use to handle events
+	HookManager    *hook.Manager                             // Hooks manager
+	Shutdown       bool                                      // Shutdown the executor (used to stop loop event and gently kill the executor)
+	UnackedTasks   map[mesos.TaskID]mesos.TaskInfo           // Unacked tasks (waiting for an acknowledgment from the agent)
+	UnackedUpdates map[string]executor.Call_Update           // Unacked updates (waiting for an acknowledgment from the agent)
 }
 
 // Config represents an executor config, containing arguments passed by the
@@ -49,13 +50,6 @@ type Config struct {
 	AgentEndpoint string
 	ExecutorID    string
 	FrameworkID   string
-}
-
-// ContainerTaskInfo represents a container linked to a task
-// This struct is used to store executor tasks with associated containers
-type ContainerTaskInfo struct {
-	ContainerID string
-	TaskInfo    mesos.TaskInfo
 }
 
 // getResource searches the given resource name in the given task
@@ -108,7 +102,7 @@ func NewExecutor(config Config, containerizer container.Containerizer, hookManag
 	// Prepare executor
 	e = &Executor{
 		Cli:            cli,
-		ContainerTasks: make(map[mesos.TaskID]ContainerTaskInfo),
+		ContainerTasks: make(map[mesos.TaskID]*types.ContainerTaskInfo),
 		Containerizer:  containerizer,
 		ExecutorID:     config.ExecutorID,
 		FrameworkID:    config.FrameworkID,
@@ -215,24 +209,26 @@ func (e *Executor) handleLaunch(ev *executor.Event) error {
 		TaskInfo:       task,
 	}
 
+	// Prepare container task info struct
+	e.ContainerTasks[task.TaskID] = &types.ContainerTaskInfo{
+		TaskInfo: task,
+	}
+
 	// Create container
-	e.HookManager.RunPreCreateHooks()
+	e.HookManager.RunPreCreateHooks(e.ContainerTasks[task.TaskID])
 	containerID, err := e.Containerizer.ContainerCreate(info)
 	if err != nil {
 		return err
 	}
+	e.ContainerTasks[task.TaskID].ContainerID = containerID // Set container ID when created
 
 	// Launch container
+	e.HookManager.RunPreRunHooks(e.ContainerTasks[task.TaskID])
 	err = e.Containerizer.ContainerRun(containerID)
 	if err != nil {
 		return err
 	}
-
-	// Store new container ID and task
-	e.ContainerTasks[task.TaskID] = ContainerTaskInfo{
-		ContainerID: containerID,
-		TaskInfo:    task,
-	}
+	e.HookManager.RunPostRunHooks(e.ContainerTasks[task.TaskID])
 
 	// Update status to RUNNING
 	status := e.newStatus(task.GetTaskID())
@@ -257,10 +253,12 @@ func (e *Executor) handleKill(ev *executor.Event) error {
 	}
 
 	// Stop container
+	e.HookManager.RunPreStopHooks(containerTaskInfo)
 	err := e.Containerizer.ContainerStop(containerTaskInfo.ContainerID)
 	if err != nil {
 		return err
 	}
+	e.HookManager.RunPostStopHooks(containerTaskInfo)
 
 	// Remove it from tasks
 	delete(e.ContainerTasks, taskID)
@@ -303,10 +301,12 @@ func (e *Executor) handleShutdown(ev *executor.Event) error {
 		)
 
 		// Stop container
+		e.HookManager.RunPreStopHooks(containerTaskInfo)
 		err := e.Containerizer.ContainerStop(containerTaskInfo.ContainerID)
 		if err != nil {
 			return err
 		}
+		e.HookManager.RunPostStopHooks(containerTaskInfo)
 
 		// Update status
 		status := e.newStatus(taskID)
