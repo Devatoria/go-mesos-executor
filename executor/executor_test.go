@@ -279,7 +279,41 @@ func (s *ExecutorTestSuite) TestHandleKill() {
 		break
 	}
 	unackedUpdate := s.executor.UnackedUpdates[updateKey]
-	assert.Equal(s.T(), *mesos.TASK_KILLED.Enum(), unackedUpdate.Status.GetState())
+	assert.Equal(s.T(), *mesos.TASK_KILLED.Enum(), unackedUpdate.Status.GetState()) // Should be a TASK_KILLED update
+}
+
+// Check that:
+// - all container tasks are killed (but not removed from container tasks, only TASK_KILLED update)
+// - shutdown is set to true
+// - returns nil
+func (s *ExecutorTestSuite) TestHandleShutdown() {
+	// Should be set to false (default value)
+	assert.False(s.T(), s.executor.Shutdown)
+
+	// Unacked should be empty
+	assert.Empty(s.T(), s.executor.UnackedTasks)
+	assert.Empty(s.T(), s.executor.UnackedUpdates)
+
+	// Add a fake running container task
+	s.executor.ContainerTasks[s.taskInfo.GetTaskID()] = ContainerTaskInfo{
+		ContainerID: "fakeContainerID",
+		TaskInfo:    s.taskInfo,
+	}
+
+	// Shutdown
+	ev := executor.Event{}
+	assert.Nil(s.T(), s.executor.handleShutdown(&ev)) // Should return nil (kill successful)
+	assert.NotEmpty(s.T(), s.executor.ContainerTasks) // Should not be empty (tasks are not removed because we're shutting down the executor AND accessing map values in a loop)
+
+	assert.NotEmpty(s.T(), s.executor.UnackedUpdates) // Should not be empty (TASK_KILLED update)
+	var updateKey string
+	for k := range s.executor.UnackedUpdates {
+		updateKey = k
+		break
+	}
+	unackedUpdate := s.executor.UnackedUpdates[updateKey]
+	assert.Equal(s.T(), *mesos.TASK_KILLED.Enum(), unackedUpdate.Status.GetState()) // Should be a TASK_KILLED update
+	assert.True(s.T(), s.executor.Shutdown)                                         // Should be set to true in order to stop main loops
 }
 
 // Check that we are receiving everything that we should
