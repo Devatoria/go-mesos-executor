@@ -6,7 +6,8 @@ import (
 
 // Containerizer represents a containerizing technology such as docker
 type Containerizer interface {
-	ContainerRun(info Info) (string, error)
+	ContainerCreate(info Info) (string, error)
+	ContainerRun(string) error
 	ContainerStop(id string) error
 }
 

@@ -35,8 +35,8 @@ func NewDockerContainerizer(socket string) (*DockerContainerizer, error) {
 	}, nil
 }
 
-// ContainerRun launches a new container with the given containerizer
-func (c *DockerContainerizer) ContainerRun(info Info) (string, error) {
+// ContainerCreate creates a new container (but do not start it)
+func (c *DockerContainerizer) ContainerCreate(info Info) (string, error) {
 	// Define network mode
 	var networkMode string
 	switch info.TaskInfo.GetContainer().GetDocker().GetNetwork() {
@@ -75,6 +75,10 @@ func (c *DockerContainerizer) ContainerRun(info Info) (string, error) {
 	}
 
 	// Prepare container
+	logger.GetInstance().Development.Debug("Creating a new container",
+		zap.String("networkMode", networkMode),
+		zap.Reflect("portsMappings", portsMappings),
+	)
 	container, err := c.Client.CreateContainer(docker.CreateContainerOptions{
 		Config: &docker.Config{
 			CPUShares: int64(info.CPUSharesLimit),
@@ -93,17 +97,17 @@ func (c *DockerContainerizer) ContainerRun(info Info) (string, error) {
 		return "", err
 	}
 
-	// Start the container
-	logger.GetInstance().Development.Debug("Starting a docker container",
-		zap.String("networkMode", networkMode),
-		zap.Reflect("portsMappings", portsMappings),
-	)
-	err = c.Client.StartContainer(container.ID, nil)
+	return container.ID, nil
+}
+
+// ContainerRun launches a new container with the given containerizer
+func (c *DockerContainerizer) ContainerRun(id string) error {
+	err := c.Client.StartContainer(id, nil)
 	if err != nil {
-		return "", err
+		return err
 	}
 
-	return container.ID, nil
+	return nil
 }
 
 // ContainerStop stops the given container

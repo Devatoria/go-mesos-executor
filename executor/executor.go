@@ -212,8 +212,14 @@ func (e *Executor) handleLaunch(ev *executor.Event) error {
 		TaskInfo:       task,
 	}
 
+	// Create container
+	containerID, err := e.Containerizer.ContainerCreate(info)
+	if err != nil {
+		return err
+	}
+
 	// Launch container
-	containerID, err := e.Containerizer.ContainerRun(info)
+	err = e.Containerizer.ContainerRun(containerID)
 	if err != nil {
 		return err
 	}
