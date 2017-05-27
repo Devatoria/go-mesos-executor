@@ -247,6 +247,41 @@ func (s *ExecutorTestSuite) TestHandleLaunch() {
 	assert.Equal(s.T(), "fakeContainerID", containerTask.ContainerID) // Should be equal to the container ID
 }
 
+// Check that:
+// - container tasks is emptied
+// - a TASK_KILLED update is added to unacked
+// - returns nil
+func (s *ExecutorTestSuite) TestHandleKill() {
+	// Unacked should be empty
+	assert.Empty(s.T(), s.executor.UnackedTasks)
+	assert.Empty(s.T(), s.executor.UnackedUpdates)
+
+	// Add a fake running container task
+	s.executor.ContainerTasks[s.taskInfo.GetTaskID()] = ContainerTaskInfo{
+		ContainerID: "fakeContainerID",
+		TaskInfo:    s.taskInfo,
+	}
+
+	// Kill
+	evKill := executor.Event_Kill{
+		TaskID: s.taskInfo.GetTaskID(),
+	}
+	ev := executor.Event{
+		Kill: &evKill,
+	}
+	assert.Nil(s.T(), s.executor.handleKill(&ev))  // Should return nil (kill successful)
+	assert.Empty(s.T(), s.executor.ContainerTasks) // Should be empty (task removed from container tasks)
+
+	assert.NotEmpty(s.T(), s.executor.UnackedUpdates) // Should not be empty (TASK_KILLED update)
+	var updateKey string
+	for k := range s.executor.UnackedUpdates {
+		updateKey = k
+		break
+	}
+	unackedUpdate := s.executor.UnackedUpdates[updateKey]
+	assert.Equal(s.T(), *mesos.TASK_KILLED.Enum(), unackedUpdate.Status.GetState())
+}
+
 // Check that we are receiving everything that we should
 func (s *ExecutorTestSuite) TestGetUnackedTasks() {
 	// Should be nil on initialize
