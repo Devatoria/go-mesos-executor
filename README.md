@@ -21,7 +21,6 @@ You can run unit tests using `make test`.
 * Send TASK_FAILED to agent when throwing an error while running (eg. if we fail to run a container) (actually panic)
 * Find a way to send errors from executor to scheduler (eg. display custom message in Marathon UI debug tab)
 * Hooks management
-  * pre-run/post-run/pre-stop/post-stop
   * Inject containerizer info if available (into execute function)
 * Implement docker parameters
   * Commands

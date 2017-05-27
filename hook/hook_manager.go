@@ -18,6 +18,10 @@ import (
 type Manager struct {
 	EnabledHooks   map[string]struct{}
 	PreCreateHooks []*Hook
+	PreRunHooks    []*Hook
+	PostRunHooks   []*Hook
+	PreStopHooks   []*Hook
+	PostStopHooks  []*Hook
 }
 
 // NewManager returns an empty HookManager (with no hooks)
@@ -28,8 +32,7 @@ func NewManager(hooks []string) *Manager {
 	}
 
 	return &Manager{
-		EnabledHooks:   enabledHooks,
-		PreCreateHooks: []*Hook{},
+		EnabledHooks: enabledHooks,
 	}
 }
 
@@ -46,6 +49,14 @@ func (m *Manager) RegisterHooks(when string, hooks ...*Hook) error {
 		switch when {
 		case "pre-create":
 			m.PreCreateHooks = append(m.PreCreateHooks, hook)
+		case "pre-run":
+			m.PreRunHooks = append(m.PreRunHooks, hook)
+		case "post-run":
+			m.PostRunHooks = append(m.PostRunHooks, hook)
+		case "pre-stop":
+			m.PreStopHooks = append(m.PreStopHooks, hook)
+		case "post-stop":
+			m.PostStopHooks = append(m.PostStopHooks, hook)
 		default:
 			return fmt.Errorf("Unable to run a hook on %s", when)
 		}
@@ -60,6 +71,62 @@ func (m *Manager) RunPreCreateHooks() error {
 		err := hook.Execute()
 		if err != nil {
 			logger.GetInstance().Production.Error(fmt.Sprintf("%s pre-create hook has failed", hook.Name), zap.Error(err))
+
+			return err
+		}
+	}
+
+	return nil
+}
+
+// RunPreRunHooks runs all pre-create hooks of the given manager
+func (m *Manager) RunPreRunHooks() error {
+	for _, hook := range m.PreRunHooks {
+		err := hook.Execute()
+		if err != nil {
+			logger.GetInstance().Production.Error(fmt.Sprintf("%s pre-run hook has failed", hook.Name), zap.Error(err))
+
+			return err
+		}
+	}
+
+	return nil
+}
+
+// RunPostRunHooks runs all pre-create hooks of the given manager
+func (m *Manager) RunPostRunHooks() error {
+	for _, hook := range m.PostRunHooks {
+		err := hook.Execute()
+		if err != nil {
+			logger.GetInstance().Production.Error(fmt.Sprintf("%s post-run hook has failed", hook.Name), zap.Error(err))
+
+			return err
+		}
+	}
+
+	return nil
+}
+
+// RunPreStopHooks runs all pre-create hooks of the given manager
+func (m *Manager) RunPreStopHooks() error {
+	for _, hook := range m.PreStopHooks {
+		err := hook.Execute()
+		if err != nil {
+			logger.GetInstance().Production.Error(fmt.Sprintf("%s pre-stop hook has failed", hook.Name), zap.Error(err))
+
+			return err
+		}
+	}
+
+	return nil
+}
+
+// RunPostStopHooks runs all pre-create hooks of the given manager
+func (m *Manager) RunPostStopHooks() error {
+	for _, hook := range m.PostStopHooks {
+		err := hook.Execute()
+		if err != nil {
+			logger.GetInstance().Production.Error(fmt.Sprintf("%s post-stop hook has failed", hook.Name), zap.Error(err))
 
 			return err
 		}
