@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/Devatoria/go-mesos-executor/container"
 	"github.com/Devatoria/go-mesos-executor/executor"
+	"github.com/Devatoria/go-mesos-executor/hook"
 	"github.com/Devatoria/go-mesos-executor/logger"
 
 	"github.com/spf13/cobra"
@@ -45,12 +46,20 @@ var rootCmd = &cobra.Command{
 			)
 		}
 
+		// Create hook manager
+		hooks := viper.GetStringSlice("hooks")
+		logger.GetInstance().Production.Info("Creating hook manager",
+			zap.Reflect("hooks", hooks),
+		)
+		m := hook.NewManager(hooks)
+		m.RegisterHooks("pre-create", &hook.LogSomethingHook)
+
 		// Create and run the executor
 		e := executor.NewExecutor(executor.Config{
 			AgentEndpoint: agentEndpoint,
 			ExecutorID:    executorID,
 			FrameworkID:   frameworkID,
-		}, c)
+		}, c, m)
 		if err := e.Execute(); err != nil {
 			logger.GetInstance().Production.Fatal("An error occured while running the executor",
 				zap.Error(err),
@@ -75,6 +84,10 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&quiet, "quiet", false, "???")
 	rootCmd.PersistentFlags().StringVar(&sandboxDirectory, "sandbox_directory", "", "Mesos sandbox directory to mount")
 	rootCmd.PersistentFlags().StringVar(&stopTimeout, "stop_timeout", "", "Timeout used to stop the container")
+
+	// Custom flags
+	rootCmd.PersistentFlags().StringSlice("hooks", []string{}, "Enabled hooks")
+	viper.BindPFlag("hooks", rootCmd.PersistentFlags().Lookup("hooks"))
 }
 
 func readConfig() {

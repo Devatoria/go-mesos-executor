@@ -1,3 +1,2 @@
 hooks:
-  - hook1
-  - hook2
+  - logSomething

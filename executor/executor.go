@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Devatoria/go-mesos-executor/container"
+	"github.com/Devatoria/go-mesos-executor/hook"
 	"github.com/Devatoria/go-mesos-executor/logger"
 
 	"github.com/mesos/mesos-go/api/v1/lib"
@@ -36,6 +37,7 @@ type Executor struct {
 	FrameworkID    string                             // Framework ID returned by the agent when running the executor
 	FrameworkInfo  mesos.FrameworkInfo                // Framework info returned by the agent after registration
 	Handler        events.Handler                     // Handler to use to handle events
+	HookManager    *hook.Manager                      // Hooks manager
 	Shutdown       bool                               // Shutdown the executor (used to stop loop event and gently kill the executor)
 	UnackedTasks   map[mesos.TaskID]mesos.TaskInfo    // Unacked tasks (waiting for an acknowledgment from the agent)
 	UnackedUpdates map[string]executor.Call_Update    // Unacked updates (waiting for an acknowledgment from the agent)
@@ -89,7 +91,7 @@ func getCPUSharesLimit(task mesos.TaskInfo) (uint64, error) {
 }
 
 // NewExecutor initializes a new executor with the given executor and framework ID
-func NewExecutor(config Config, containerizer container.Containerizer) *Executor {
+func NewExecutor(config Config, containerizer container.Containerizer, hookManager *hook.Manager) *Executor {
 	var e *Executor
 
 	apiURL := url.URL{
@@ -111,6 +113,7 @@ func NewExecutor(config Config, containerizer container.Containerizer) *Executor
 		ExecutorID:     config.ExecutorID,
 		FrameworkID:    config.FrameworkID,
 		FrameworkInfo:  mesos.FrameworkInfo{},
+		HookManager:    hookManager,
 		Shutdown:       false,
 		UnackedTasks:   make(map[mesos.TaskID]mesos.TaskInfo),
 		UnackedUpdates: make(map[string]executor.Call_Update),
@@ -213,6 +216,7 @@ func (e *Executor) handleLaunch(ev *executor.Event) error {
 	}
 
 	// Create container
+	e.HookManager.RunPreCreateHooks()
 	containerID, err := e.Containerizer.ContainerCreate(info)
 	if err != nil {
 		return err
