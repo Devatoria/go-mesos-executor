@@ -37,10 +37,6 @@ You can run unit tests using `make test`.
 * Tests
   * Docker containerizer
   * Hooks management
-    * RegisterHooks
-      * pre-create/pre-run/post-run/pre-stop/post-stop slices must be filled with given hooks
-      * an error is thrown when trying to register a hook on a non-existing "when"
-      * a non-enabled hook is not added into slices
     * Run functions
       * nil should be returned when hook executed well
       * an error should be thrown when hook didn't execute well
