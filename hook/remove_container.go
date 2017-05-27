@@ -8,15 +8,15 @@ import (
 	"go.uber.org/zap"
 )
 
-// LogSomethingHook logs something on pre-run-
-var LogSomethingHook = Hook{
-	Name:     "logSomething",
+// RemoveContainerHook removes the stopped container on post-stop
+var RemoveContainerHook = Hook{
+	Name:     "removeContainer",
 	Priority: 0,
 	Execute: func(c container.Containerizer, info *types.ContainerTaskInfo) error {
-		logger.GetInstance().Production.Info("I'm logging!",
+		logger.GetInstance().Production.Info("Removing container",
 			zap.String("containerID", info.ContainerID),
 		)
 
-		return nil
+		return c.ContainerRemove(info.ContainerID)
 	},
 }

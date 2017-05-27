@@ -6,9 +6,10 @@ import (
 
 // Containerizer represents a containerizing technology such as docker
 type Containerizer interface {
-	ContainerCreate(info Info) (string, error)
+	ContainerCreate(Info) (string, error)
 	ContainerRun(string) error
-	ContainerStop(id string) error
+	ContainerStop(string) error
+	ContainerRemove(string) error
 }
 
 // Info represents container information such as image name, CPU/memory limits...

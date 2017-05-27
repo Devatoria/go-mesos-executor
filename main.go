@@ -53,6 +53,7 @@ var rootCmd = &cobra.Command{
 		)
 		m := hook.NewManager(hooks)
 		m.RegisterHooks("pre-run", &hook.LogSomethingHook)
+		m.RegisterHooks("post-stop", &hook.RemoveContainerHook)
 
 		// Create and run the executor
 		e := executor.NewExecutor(executor.Config{

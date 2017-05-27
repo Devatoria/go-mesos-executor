@@ -32,6 +32,10 @@ func (f *FakeContainerizer) ContainerStop(id string) error {
 	return nil
 }
 
+func (f *FakeContainerizer) ContainerRemove(id string) error {
+	return nil
+}
+
 // ExecutorTestSuite is a struct with all what we need to run the test suite
 type ExecutorTestSuite struct {
 	suite.Suite

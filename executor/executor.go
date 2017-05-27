@@ -215,7 +215,7 @@ func (e *Executor) handleLaunch(ev *executor.Event) error {
 	}
 
 	// Create container
-	e.HookManager.RunPreCreateHooks(e.ContainerTasks[task.TaskID])
+	e.HookManager.RunPreCreateHooks(e.Containerizer, e.ContainerTasks[task.TaskID])
 	containerID, err := e.Containerizer.ContainerCreate(info)
 	if err != nil {
 		return err
@@ -223,12 +223,12 @@ func (e *Executor) handleLaunch(ev *executor.Event) error {
 	e.ContainerTasks[task.TaskID].ContainerID = containerID // Set container ID when created
 
 	// Launch container
-	e.HookManager.RunPreRunHooks(e.ContainerTasks[task.TaskID])
+	e.HookManager.RunPreRunHooks(e.Containerizer, e.ContainerTasks[task.TaskID])
 	err = e.Containerizer.ContainerRun(containerID)
 	if err != nil {
 		return err
 	}
-	e.HookManager.RunPostRunHooks(e.ContainerTasks[task.TaskID])
+	e.HookManager.RunPostRunHooks(e.Containerizer, e.ContainerTasks[task.TaskID])
 
 	// Update status to RUNNING
 	status := e.newStatus(task.GetTaskID())
@@ -253,12 +253,12 @@ func (e *Executor) handleKill(ev *executor.Event) error {
 	}
 
 	// Stop container
-	e.HookManager.RunPreStopHooks(containerTaskInfo)
+	e.HookManager.RunPreStopHooks(e.Containerizer, containerTaskInfo)
 	err := e.Containerizer.ContainerStop(containerTaskInfo.ContainerID)
 	if err != nil {
 		return err
 	}
-	e.HookManager.RunPostStopHooks(containerTaskInfo)
+	e.HookManager.RunPostStopHooks(e.Containerizer, containerTaskInfo)
 
 	// Remove it from tasks
 	delete(e.ContainerTasks, taskID)
@@ -301,12 +301,12 @@ func (e *Executor) handleShutdown(ev *executor.Event) error {
 		)
 
 		// Stop container
-		e.HookManager.RunPreStopHooks(containerTaskInfo)
+		e.HookManager.RunPreStopHooks(e.Containerizer, containerTaskInfo)
 		err := e.Containerizer.ContainerStop(containerTaskInfo.ContainerID)
 		if err != nil {
 			return err
 		}
-		e.HookManager.RunPostStopHooks(containerTaskInfo)
+		e.HookManager.RunPostStopHooks(e.Containerizer, containerTaskInfo)
 
 		// Update status
 		status := e.newStatus(taskID)

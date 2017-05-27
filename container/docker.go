@@ -114,3 +114,10 @@ func (c *DockerContainerizer) ContainerRun(id string) error {
 func (c *DockerContainerizer) ContainerStop(id string) error {
 	return c.Client.StopContainer(id, 0)
 }
+
+// ContainerRemove removes the given container
+func (c *DockerContainerizer) ContainerRemove(id string) error {
+	return c.Client.RemoveContainer(docker.RemoveContainerOptions{
+		ID: id,
+	})
+}
