@@ -22,6 +22,7 @@ type ExecutorTestSuite struct {
 	agentInfo     mesos.AgentInfo
 	callUpdate    executor.Call_Update
 	config        Config
+	cpusResource  mesos.Resource
 	executor      *Executor
 	executorInfo  mesos.ExecutorInfo
 	frameworkInfo mesos.FrameworkInfo
@@ -71,6 +72,11 @@ func (s *ExecutorTestSuite) SetupTest() {
 	}
 
 	// Resources
+	s.cpusResource = mesos.Resource{
+		Name:   "cpus",
+		Type:   mesos.SCALAR.Enum(),
+		Scalar: &mesos.Value_Scalar{Value: 2},
+	}
 	s.memResource = mesos.Resource{
 		Name:   "mem",
 		Type:   mesos.SCALAR.Enum(),
@@ -79,8 +85,11 @@ func (s *ExecutorTestSuite) SetupTest() {
 
 	// Task information
 	s.taskInfo = mesos.TaskInfo{
-		TaskID:    mesos.TaskID{Value: "fakeTaskID"},
-		Resources: []mesos.Resource{s.memResource},
+		TaskID: mesos.TaskID{Value: "fakeTaskID"},
+		Resources: []mesos.Resource{
+			s.cpusResource,
+			s.memResource,
+		},
 	}
 
 	// Call update information
@@ -258,6 +267,19 @@ func (s *ExecutorTestSuite) TestGetMemoryLimit() {
 	// Should return an error when resource is missing
 	s.taskInfo.Resources = []mesos.Resource{}
 	_, err = getMemoryLimit(s.taskInfo)
+	assert.NotNil(s.T(), err)
+}
+
+// Check that we retrieve the cpu shares resource, or an error when not existing
+func (s *ExecutorTestSuite) TestGetCPUSharesLimit() {
+	// Should return the CPU shares resource value
+	value, err := getCPUSharesLimit(s.taskInfo)
+	assert.Nil(s.T(), err)
+	assert.Equal(s.T(), uint64(s.cpusResource.GetScalar().GetValue()*cpuSharesPerCPU), value)
+
+	// Should return an error when resource is missing
+	s.taskInfo.Resources = []mesos.Resource{}
+	_, err = getCPUSharesLimit(s.taskInfo)
 	assert.NotNil(s.T(), err)
 }
 
