@@ -25,6 +25,7 @@ type ExecutorTestSuite struct {
 	executor      *Executor
 	executorInfo  mesos.ExecutorInfo
 	frameworkInfo mesos.FrameworkInfo
+	memResource   mesos.Resource
 	server        *httptest.Server
 	taskInfo      mesos.TaskInfo
 }
@@ -69,16 +70,17 @@ func (s *ExecutorTestSuite) SetupTest() {
 		ID: &mesos.FrameworkID{Value: s.config.FrameworkID},
 	}
 
+	// Resources
+	s.memResource = mesos.Resource{
+		Name:   "mem",
+		Type:   mesos.SCALAR.Enum(),
+		Scalar: &mesos.Value_Scalar{Value: 512},
+	}
+
 	// Task information
 	s.taskInfo = mesos.TaskInfo{
-		TaskID: mesos.TaskID{Value: "fakeTaskID"},
-		Resources: []mesos.Resource{
-			mesos.Resource{
-				Name:   "mem",
-				Type:   mesos.SCALAR.Enum(),
-				Scalar: &mesos.Value_Scalar{Value: 512},
-			},
-		},
+		TaskID:    mesos.TaskID{Value: "fakeTaskID"},
+		Resources: []mesos.Resource{s.memResource},
 	}
 
 	// Call update information
@@ -243,7 +245,20 @@ func (s *ExecutorTestSuite) TestGetResource() {
 	// Should return the requested resource
 	res, err := getResource(s.taskInfo, "mem")
 	assert.Nil(s.T(), err)
-	assert.Equal(s.T(), s.taskInfo.GetResources()[0], res)
+	assert.Equal(s.T(), s.memResource, res)
+}
+
+// Check that we retrieve the memory resource, or an error when not existing
+func (s *ExecutorTestSuite) TestGetMemoryLimit() {
+	// Should return the memory resource value
+	value, err := getMemoryLimit(s.taskInfo)
+	assert.Nil(s.T(), err)
+	assert.Equal(s.T(), uint64(s.memResource.GetScalar().GetValue()*1024*1024), value)
+
+	// Should return an error when resource is missing
+	s.taskInfo.Resources = []mesos.Resource{}
+	_, err = getMemoryLimit(s.taskInfo)
+	assert.NotNil(s.T(), err)
 }
 
 // Launch test suite
