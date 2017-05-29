@@ -36,5 +36,8 @@ You can run unit tests using `make test`.
   * Command health checks
 * Tests
   * Docker containerizer
+    * ContainerRun
+    * ContainerStop
+    * ContainerRemove
 
 The executor actually does not handle custom parameters sent to Docker CLI. This has to be done with a matching enum (I think) and it is actually a little bit boring to do this :)
