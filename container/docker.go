@@ -52,6 +52,8 @@ func (c *DockerContainerizer) ContainerCreate(info Info) (string, error) {
 	case mesos.ContainerInfo_DockerInfo_USER:
 		networkMode = "user"
 		break
+	default:
+		return "", fmt.Errorf("Invalid network mode")
 	}
 
 	// Define ports mappings
@@ -92,7 +94,6 @@ func (c *DockerContainerizer) ContainerCreate(info Info) (string, error) {
 			Privileged:   info.TaskInfo.GetContainer().GetDocker().GetPrivileged(),
 		},
 	})
-
 	if err != nil {
 		return "", err
 	}
