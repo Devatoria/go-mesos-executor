@@ -9,6 +9,10 @@ build:
 test:
 	go test ./...
 
+.PHONY: testv
+testv:
+	go test -v ./...
+
 .PHONY: docker
 docker: build
 	docker-compose up

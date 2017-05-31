@@ -22,6 +22,7 @@ type DockerContainerizerTestSuite struct {
 
 type DockerContainerizerTestRequest struct {
 	body []byte
+	path string
 }
 
 func (s *DockerContainerizerTestSuite) SetupTest() {
@@ -34,6 +35,7 @@ func (s *DockerContainerizerTestSuite) SetupTest() {
 		s.T().Logf("Dumped request is %s", string(body))
 		s.req = DockerContainerizerTestRequest{
 			body: body,
+			path: r.URL.Path,
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -121,6 +123,27 @@ func (s *DockerContainerizerTestSuite) TestDockerContainerCreate() {
 	s.info.TaskInfo.Container.Docker.Network = &invalidNetwork
 	_, err = s.dc.ContainerCreate(s.info)
 	assert.NotNil(s.T(), err)
+}
+
+// Check that returns nil if everything is ok
+func (s *DockerContainerizerTestSuite) TestDockerContainerRun() {
+	err := s.dc.ContainerRun("abcdef1234")
+	assert.Nil(s.T(), err)
+	assert.Empty(s.T(), s.req.body)
+}
+
+// Check that returns nil if everything is ok
+func (s *DockerContainerizerTestSuite) TestDockerContainerStop() {
+	err := s.dc.ContainerStop("abcdef1234")
+	assert.Nil(s.T(), err)
+	assert.Empty(s.T(), s.req.body)
+}
+
+// Check that returns nil if everything is ok
+func (s *DockerContainerizerTestSuite) TestDockerContainerRemove() {
+	err := s.dc.ContainerRemove("abcdef1234")
+	assert.Nil(s.T(), err)
+	assert.Empty(s.T(), s.req.body)
 }
 
 func TestDockerContainerizerSuite(t *testing.T) {
