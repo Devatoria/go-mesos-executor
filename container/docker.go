@@ -76,6 +76,25 @@ func (c *DockerContainerizer) ContainerCreate(info Info) (string, error) {
 		stringifiedEnv = append(stringifiedEnv, fmt.Sprintf("%s=%s", variable.GetName(), variable.GetValue()))
 	}
 
+	// Define volumes
+	// Volumes must be passed to "binds" host configuration parameter
+	// and have the form: hostPath:containerPath:mode
+	var binds []string
+	for _, volume := range info.TaskInfo.GetContainer().GetVolumes() {
+		var mode string
+		switch volume.GetMode() {
+		case mesos.RW:
+			mode = "rw"
+		case mesos.RO:
+			mode = "ro"
+		default:
+			return "", fmt.Errorf("Invalid volume mode: %v", volume.GetMode().String())
+		}
+
+		bind := fmt.Sprintf("%s:%s:%s", volume.GetHostPath(), volume.GetContainerPath(), mode)
+		binds = append(binds, bind)
+	}
+
 	// Prepare container
 	logger.GetInstance().Development.Debug("Creating a new container",
 		zap.String("networkMode", networkMode),
@@ -89,6 +108,7 @@ func (c *DockerContainerizer) ContainerCreate(info Info) (string, error) {
 			Memory:    int64(info.MemoryLimit),
 		},
 		HostConfig: &docker.HostConfig{
+			Binds:        binds,
 			NetworkMode:  networkMode,
 			PortBindings: portsMappings,
 			Privileged:   info.TaskInfo.GetContainer().GetDocker().GetPrivileged(),

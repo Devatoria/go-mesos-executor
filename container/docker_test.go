@@ -49,6 +49,7 @@ func (s *DockerContainerizerTestSuite) SetupTest() {
 	}
 
 	// Info
+	hostPath := "/data"
 	protocol := "tcp"
 	s.info = Info{
 		CPUSharesLimit: 1024,
@@ -75,6 +76,13 @@ func (s *DockerContainerizerTestSuite) SetupTest() {
 						},
 					},
 				},
+				Volumes: []mesos.Volume{
+					mesos.Volume{
+						ContainerPath: "/usr/share/nginx/html",
+						HostPath:      &hostPath,
+						Mode:          mesos.RW.Enum(),
+					},
+				},
 			},
 		},
 	}
@@ -89,12 +97,37 @@ func (s *DockerContainerizerTestSuite) TestNewDockerContainerizer() {
 // - JSON sent to docker daemon is as it should be, containing all the needed fields
 // - wrong network mode throws an error
 func (s *DockerContainerizerTestSuite) TestDockerContainerCreate() {
-	// {"Memory":512,"CpuShares":1024,"Env":["foo=bar"],"Cmd":null,"Entrypoint":null,"HostConfig":{"PortBindings":{"80/tcp":[{"HostPort":"30000"}]},"NetworkMode":"host","RestartPolicy":{},"LogConfig":{}}}
+	// Expected request JSON:
+	//{
+	//  "Memory": 512,
+	//  "CpuShares": 1024,
+	//  "Env": [
+	//    "foo=bar"
+	//  ],
+	//  "Cmd": null,
+	//  "Entrypoint": null,
+	//  "HostConfig": {
+	//    "Binds": [
+	//      "/data:/usr/share/nginx/html:rw"
+	//    ],
+	//    "PortBindings": {
+	//      "80/tcp": [
+	//        {
+	//          "HostPort": "30000"
+	//        }
+	//      ]
+	//    },
+	//    "NetworkMode": "host",
+	//    "RestartPolicy": {},
+	//    "LogConfig": {}
+	//  }
+	//}
 	var result struct {
 		CPUShares  uint64 `json:"CpuShares"`
 		Env        []string
 		Memory     uint64
 		HostConfig struct {
+			Binds        []string
 			NetworkMode  string
 			PortBindings map[string][]struct {
 				HostPort string
@@ -109,10 +142,11 @@ func (s *DockerContainerizerTestSuite) TestDockerContainerCreate() {
 		s.T().Fatal(err)
 	}
 
-	assert.Equal(s.T(), s.info.MemoryLimit, result.Memory)       // Should be equal to the task memory limit
-	assert.Equal(s.T(), s.info.CPUSharesLimit, result.CPUShares) // Should be equal to the task CPU shares limit
-	assert.Equal(s.T(), "host", result.HostConfig.NetworkMode)   // Should be the string representation of the task network mode
-	assert.Equal(s.T(), []string{"foo=bar"}, result.Env)         // Should be formated as a list of "key=value" strings
+	assert.Equal(s.T(), s.info.MemoryLimit, result.Memory)                                   // Should be equal to the task memory limit
+	assert.Equal(s.T(), s.info.CPUSharesLimit, result.CPUShares)                             // Should be equal to the task CPU shares limit
+	assert.Equal(s.T(), "host", result.HostConfig.NetworkMode)                               // Should be the string representation of the task network mode
+	assert.Equal(s.T(), []string{"foo=bar"}, result.Env)                                     // Should be formated as a list of "key=value" strings
+	assert.Equal(s.T(), []string{"/data:/usr/share/nginx/html:rw"}, result.HostConfig.Binds) // Should be formated as a list of "hostPath:containerPath:mode" strings
 
 	portBindings, ok := result.HostConfig.PortBindings["80/tcp"]
 	assert.True(s.T(), ok)                                 // Should be present and formated as "port/protocol"
