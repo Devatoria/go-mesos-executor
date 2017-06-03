@@ -52,7 +52,7 @@ var rootCmd = &cobra.Command{
 			zap.Reflect("hooks", hooks),
 		)
 		m := hook.NewManager(hooks)
-		m.RegisterHooks("pre-run", &hook.LogSomethingHook)
+		m.RegisterHooks("post-run", &hook.ACLHook)
 		m.RegisterHooks("post-stop", &hook.RemoveContainerHook)
 
 		// Create and run the executor

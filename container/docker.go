@@ -2,6 +2,7 @@ package container
 
 import (
 	"fmt"
+	"net"
 	"strconv"
 	"strings"
 
@@ -141,4 +142,29 @@ func (c *DockerContainerizer) ContainerRemove(id string) error {
 	return c.Client.RemoveContainer(docker.RemoveContainerOptions{
 		ID: id,
 	})
+}
+
+// ContainerGetPID returns the PID of the given container
+func (c *DockerContainerizer) ContainerGetPID(id string) (int, error) {
+	con, err := c.Client.InspectContainer(id)
+	if err != nil {
+		return 0, err
+	}
+
+	return con.State.Pid, nil
+}
+
+// ContainerGetGatewayIP returns the container gateway IP
+func (c *DockerContainerizer) ContainerGetGatewayIP(id string) (net.IP, error) {
+	con, err := c.Client.InspectContainer(id)
+	if err != nil {
+		return nil, nil
+	}
+
+	ip := net.ParseIP(con.NetworkSettings.Gateway)
+	if ip == nil {
+		return nil, fmt.Errorf("Invalid gateway IP: %s", con.NetworkSettings.Gateway)
+	}
+
+	return ip, nil
 }

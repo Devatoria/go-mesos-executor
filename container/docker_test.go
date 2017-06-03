@@ -180,6 +180,13 @@ func (s *DockerContainerizerTestSuite) TestDockerContainerRemove() {
 	assert.Empty(s.T(), s.req.body)
 }
 
+// Check that returns nil if everything is ok
+func (s *DockerContainerizerTestSuite) TestDockerContainerGetPID() {
+	_, err := s.dc.ContainerGetPID("abcdef1234")
+	assert.Nil(s.T(), err)
+	assert.Empty(s.T(), s.req.body)
+}
+
 func TestDockerContainerizerSuite(t *testing.T) {
 	suite.Run(t, new(DockerContainerizerTestSuite))
 }

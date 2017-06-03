@@ -7,7 +7,6 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/Devatoria/go-mesos-executor/container"
 	"github.com/Devatoria/go-mesos-executor/hook"
 	"github.com/Devatoria/go-mesos-executor/types"
 
@@ -17,32 +16,13 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-// Fake containerizer
-type FakeContainerizer struct{}
-
-func (f *FakeContainerizer) ContainerCreate(container.Info) (string, error) {
-	return "fakeContainerID", nil
-}
-
-func (f *FakeContainerizer) ContainerRun(id string) error {
-	return nil
-}
-
-func (f *FakeContainerizer) ContainerStop(id string) error {
-	return nil
-}
-
-func (f *FakeContainerizer) ContainerRemove(id string) error {
-	return nil
-}
-
 // ExecutorTestSuite is a struct with all what we need to run the test suite
 type ExecutorTestSuite struct {
 	suite.Suite
 	agentInfo     mesos.AgentInfo
 	callUpdate    executor.Call_Update
 	config        Config
-	containerizer *FakeContainerizer
+	containerizer *types.FakeContainerizer
 	cpusResource  mesos.Resource
 	executor      *Executor
 	executorInfo  mesos.ExecutorInfo
@@ -74,7 +54,7 @@ func (s *ExecutorTestSuite) SetupTest() {
 	}
 
 	// Containerizer
-	s.containerizer = &FakeContainerizer{}
+	s.containerizer = &types.FakeContainerizer{}
 
 	// Hooks manager
 	s.hookManager = hook.NewManager([]string{})
