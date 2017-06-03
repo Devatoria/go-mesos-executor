@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/Devatoria/go-mesos-executor/container"
 	"github.com/Devatoria/go-mesos-executor/hook"
 	"github.com/Devatoria/go-mesos-executor/types"
 
@@ -24,6 +25,7 @@ type ExecutorTestSuite struct {
 	config        Config
 	containerizer *types.FakeContainerizer
 	cpusResource  mesos.Resource
+	errorHook     *hook.Hook
 	executor      *Executor
 	executorInfo  mesos.ExecutorInfo
 	frameworkInfo mesos.FrameworkInfo
@@ -56,8 +58,17 @@ func (s *ExecutorTestSuite) SetupTest() {
 	// Containerizer
 	s.containerizer = &types.FakeContainerizer{}
 
+	// Error hook
+	s.errorHook = &hook.Hook{
+		Name:     "error",
+		Priority: 0,
+		Execute: func(c container.Containerizer, info *types.ContainerTaskInfo) error {
+			return fmt.Errorf("An error")
+		},
+	}
+
 	// Hooks manager
-	s.hookManager = hook.NewManager([]string{})
+	s.hookManager = hook.NewManager([]string{"error"})
 
 	// Executor
 	s.executor = NewExecutor(s.config, s.containerizer, s.hookManager)
@@ -208,22 +219,40 @@ func (s *ExecutorTestSuite) TestHandleAcknowledged() {
 // - a task is pushed in unacks
 // - a task is pushed in container tasks
 // - a status update (RUNNING) is pushed in unacks
-// - returns nil
+// - returns an error if a pre-create/pre-run/post-run hook fails
 func (s *ExecutorTestSuite) TestHandleLaunch() {
 	// Unacked tasks/updates should be empty
 	assert.Empty(s.T(), s.executor.UnackedTasks)
 	assert.Empty(s.T(), s.executor.UnackedUpdates)
 
-	// Launch
+	// Generating fake event
 	evLaunch := executor.Event_Launch{
 		Task: s.taskInfo,
 	}
 	ev := executor.Event{
 		Launch: &evLaunch,
 	}
-	assert.Nil(s.T(), s.executor.handleLaunch(&ev))   // Should return nil (launch successful)
-	assert.NotEmpty(s.T(), s.executor.UnackedTasks)   // Should not be empty (task waiting for acknowledgment)
-	assert.NotEmpty(s.T(), s.executor.ContainerTasks) // Should not be empty (new running task for this container)
+
+	// Should return an error if a hook fails during launch
+	// Pre-create hook case
+	s.executor.HookManager.RegisterHooks("pre-create", s.errorHook)
+	assert.Error(s.T(), s.executor.handleLaunch(&ev))
+
+	// Pre-run hook case
+	s.executor.HookManager.PreCreateHooks = []*hook.Hook{}
+	s.executor.HookManager.RegisterHooks("pre-run", s.errorHook)
+	assert.Error(s.T(), s.executor.handleLaunch(&ev))
+
+	// Post-run hook case
+	s.executor.HookManager.PreRunHooks = []*hook.Hook{}
+	s.executor.HookManager.RegisterHooks("post-run", s.errorHook)
+	assert.Error(s.T(), s.executor.handleLaunch(&ev))
+
+	// Nominal case
+	s.executor.HookManager.PostRunHooks = []*hook.Hook{} // Remove previously added failing hook
+	assert.Nil(s.T(), s.executor.handleLaunch(&ev))      // Should return nil (launch successful)
+	assert.NotEmpty(s.T(), s.executor.UnackedTasks)      // Should not be empty (task waiting for acknowledgment)
+	assert.NotEmpty(s.T(), s.executor.ContainerTasks)    // Should not be empty (new running task for this container)
 
 	assert.NotEmpty(s.T(), s.executor.UnackedUpdates) // Should not be empty (TASK_RUNNING update)
 	var updateKey string
@@ -241,6 +270,7 @@ func (s *ExecutorTestSuite) TestHandleLaunch() {
 // Check that:
 // - container tasks is emptied
 // - a TASK_KILLED update is added to unacked
+// - returns an error if a pre-stop/post-stop hook fail
 // - returns nil
 func (s *ExecutorTestSuite) TestHandleKill() {
 	// Unacked should be empty
@@ -253,13 +283,26 @@ func (s *ExecutorTestSuite) TestHandleKill() {
 		TaskInfo:    s.taskInfo,
 	}
 
-	// Kill
+	// Generating fake event
 	evKill := executor.Event_Kill{
 		TaskID: s.taskInfo.GetTaskID(),
 	}
 	ev := executor.Event{
 		Kill: &evKill,
 	}
+
+	// Should throw an error on hook fail
+	// Pre-stop hook case
+	s.executor.HookManager.RegisterHooks("pre-stop", s.errorHook)
+	assert.Error(s.T(), s.executor.handleLaunch(&ev))
+
+	// Post-stop hook case
+	s.executor.HookManager.PreStopHooks = []*hook.Hook{}
+	s.executor.HookManager.RegisterHooks("post-stop", s.errorHook)
+	assert.Error(s.T(), s.executor.handleLaunch(&ev))
+
+	// Nominal case
+	s.executor.HookManager.PostStopHooks = []*hook.Hook{}
 	assert.Nil(s.T(), s.executor.handleKill(&ev))  // Should return nil (kill successful)
 	assert.Empty(s.T(), s.executor.ContainerTasks) // Should be empty (task removed from container tasks)
 
@@ -291,8 +334,21 @@ func (s *ExecutorTestSuite) TestHandleShutdown() {
 		TaskInfo:    s.taskInfo,
 	}
 
-	// Shutdown
+	// Generating fake event
 	ev := executor.Event{}
+
+	// Should throw an error on hook fail
+	// Pre-stop hook case
+	s.executor.HookManager.RegisterHooks("pre-stop", s.errorHook)
+	assert.Error(s.T(), s.executor.handleLaunch(&ev))
+
+	// Post-stop hook case
+	s.executor.HookManager.PreStopHooks = []*hook.Hook{}
+	s.executor.HookManager.RegisterHooks("post-stop", s.errorHook)
+	assert.Error(s.T(), s.executor.handleLaunch(&ev))
+
+	// Nominal case
+	s.executor.HookManager.PostStopHooks = []*hook.Hook{}
 	assert.Nil(s.T(), s.executor.handleShutdown(&ev)) // Should return nil (kill successful)
 	assert.NotEmpty(s.T(), s.executor.ContainerTasks) // Should not be empty (tasks are not removed because we're shutting down the executor AND accessing map values in a loop)
 

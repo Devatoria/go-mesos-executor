@@ -214,21 +214,36 @@ func (e *Executor) handleLaunch(ev *executor.Event) error {
 		TaskInfo: task,
 	}
 
+	// Run pre-create hooks
+	err = e.HookManager.RunPreCreateHooks(e.Containerizer, e.ContainerTasks[task.TaskID])
+	if err != nil {
+		return err
+	}
+
 	// Create container
-	e.HookManager.RunPreCreateHooks(e.Containerizer, e.ContainerTasks[task.TaskID])
 	containerID, err := e.Containerizer.ContainerCreate(info)
 	if err != nil {
 		return err
 	}
 	e.ContainerTasks[task.TaskID].ContainerID = containerID // Set container ID when created
 
+	// Run pre-run hooks
+	err = e.HookManager.RunPreRunHooks(e.Containerizer, e.ContainerTasks[task.TaskID])
+	if err != nil {
+		return err
+	}
+
 	// Launch container
-	e.HookManager.RunPreRunHooks(e.Containerizer, e.ContainerTasks[task.TaskID])
 	err = e.Containerizer.ContainerRun(containerID)
 	if err != nil {
 		return err
 	}
-	e.HookManager.RunPostRunHooks(e.Containerizer, e.ContainerTasks[task.TaskID])
+
+	// Run post-run hooks
+	err = e.HookManager.RunPostRunHooks(e.Containerizer, e.ContainerTasks[task.TaskID])
+	if err != nil {
+		return err
+	}
 
 	// Update status to RUNNING
 	status := e.newStatus(task.GetTaskID())
@@ -252,13 +267,23 @@ func (e *Executor) handleKill(ev *executor.Event) error {
 		return fmt.Errorf("%s task not found, unable to kill it", taskID.GetValue())
 	}
 
-	// Stop container
-	e.HookManager.RunPreStopHooks(e.Containerizer, containerTaskInfo)
-	err := e.Containerizer.ContainerStop(containerTaskInfo.ContainerID)
+	// Run pre-stop hooks
+	err := e.HookManager.RunPreStopHooks(e.Containerizer, containerTaskInfo)
 	if err != nil {
 		return err
 	}
-	e.HookManager.RunPostStopHooks(e.Containerizer, containerTaskInfo)
+
+	// Stop container
+	err = e.Containerizer.ContainerStop(containerTaskInfo.ContainerID)
+	if err != nil {
+		return err
+	}
+
+	// Run post-stop hooks
+	err = e.HookManager.RunPostStopHooks(e.Containerizer, containerTaskInfo)
+	if err != nil {
+		return err
+	}
 
 	// Remove it from tasks
 	delete(e.ContainerTasks, taskID)
@@ -300,13 +325,23 @@ func (e *Executor) handleShutdown(ev *executor.Event) error {
 			zap.String("taskID", taskID.GetValue()),
 		)
 
-		// Stop container
-		e.HookManager.RunPreStopHooks(e.Containerizer, containerTaskInfo)
-		err := e.Containerizer.ContainerStop(containerTaskInfo.ContainerID)
+		// Run pre-stop hooks
+		err := e.HookManager.RunPreStopHooks(e.Containerizer, containerTaskInfo)
 		if err != nil {
 			return err
 		}
-		e.HookManager.RunPostStopHooks(e.Containerizer, containerTaskInfo)
+
+		// Stop container
+		err = e.Containerizer.ContainerStop(containerTaskInfo.ContainerID)
+		if err != nil {
+			return err
+		}
+
+		// Run post-stop hooks
+		err = e.HookManager.RunPostStopHooks(e.Containerizer, containerTaskInfo)
+		if err != nil {
+			return err
+		}
 
 		// Update status
 		status := e.newStatus(taskID)
