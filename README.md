@@ -35,5 +35,6 @@ You can run unit tests using `make test`.
   * Command health checks
 * Add thread lock in ACL tests to avoir namespace switching
 * Find a way to handle health checks with ACL hook when masquerading is enabled (leading to see the caller IP in the container instead of the bridge IP)
+* Manage hooks priority
 
 The executor actually does not handle custom parameters sent to Docker CLI. This has to be done with a matching enum (I think) and it is actually a little bit boring to do this :)
