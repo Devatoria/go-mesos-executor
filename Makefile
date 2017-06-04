@@ -5,6 +5,10 @@ all: build
 build:
 	go build
 
+.PHONY: race
+race:
+	go build -race
+
 .PHONY: test
 test:
 	go test ./...
@@ -15,6 +19,7 @@ testv:
 
 .PHONY: docker
 docker: build
+	docker-compose build
 	docker-compose up
 
 .PHONY: clean

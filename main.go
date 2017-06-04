@@ -89,6 +89,8 @@ func init() {
 	// Custom flags
 	rootCmd.PersistentFlags().StringSlice("hooks", []string{}, "Enabled hooks")
 	viper.BindPFlag("hooks", rootCmd.PersistentFlags().Lookup("hooks"))
+	rootCmd.PersistentFlags().String("proc_path", "/proc", "Proc mount path")
+	viper.BindPFlag("proc_path", rootCmd.PersistentFlags().Lookup("proc_path"))
 }
 
 func readConfig() {

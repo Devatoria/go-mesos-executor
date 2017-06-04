@@ -1,3 +1,4 @@
 hooks:
   - acl
   - removeContainer
+proc_path: /mnt/proc

@@ -23,6 +23,12 @@ When at least one IP is injected, the hook appends two extra rules at the very e
 
 ## Health checks
 
+### Requirements
+
+* nsenter to enter specific process mount namespace
+
+### Introduction
+
 Since Mesos 1.1.0, health checks should be done locally, by the executor, in order to avoid network issues and be more scalable. Because it would not be a good idea to make these checks to be containerizer dependent (hammering the Docker daemon for this is not a good idea), these checks should be executor directly in the container namespace (network for HTTP(S)/TCP, mount for commands). This can be done easily (and is already done in the ACL hook).
 
 Mesos native health checks are actually not available in Marathon UI, and can be tested only when sending raw JSON. You must prefix the check protocol with `MESOS_`. Another thing to know is that you can only have one Mesos native health check per task.
@@ -36,6 +42,7 @@ Health check design is to define, but will be simple: a health checker, which is
 * http://mesos.apache.org/documentation/latest/health-checks/#mesos-native-health-checks
 * http://mesos.apache.org/documentation/latest/health-checks/#under-the-hood
 * https://github.com/mesosphere/health-checks-scale-tests/blob/06ac7a2f0fa52836fedfd4b26fdb5420b5ab207e/README.md
+* Why we can't use setns directly from Go code: https://github.com/golang/go/issues/8676
 
 ## Configuration file
 
@@ -58,10 +65,9 @@ You can run unit tests using `make test`.
 ## TODO
 
 * Send TASK_FAILED to agent when throwing an error while running (eg. if we fail to run a container) (actually panic)
-* Find a way to send errors from executor to scheduler (eg. display custom message in Marathon UI debug tab)
+* Find a way to send errors from executor to scheduler (eg. display custom message in Marathon UI debug tab) (can be done with Message field and TASK_FAILED status)
 * Implement docker parameters
   * Commands
-* Add thread lock in ACL tests to avoir namespace switching
 * Find a way to handle health checks with ACL hook when masquerading is enabled (leading to see the caller IP in the container instead of the bridge IP)
 * Manage hooks priority
 * Add some useful hooks
@@ -69,8 +75,12 @@ You can run unit tests using `make test`.
   * Volumes sandboxing
   * Forced network mode (bridged)
 * Health checks: please take a look at health checks section
-  * HTTP(S)
-  * TCP
-  * Commands
+  * Add HTTPS support (not tested)
+  * Manage defunct processes when stopping the executor while running a command health check
+* Containerizer
+  * libcontainer (runc)
+* Logger
+  * Review logger (with only one logger, configurable)
+  * Remove stack trace
 
 The executor actually does not handle custom parameters sent to Docker CLI. This has to be done with a matching enum (I think) and it is actually a little bit boring to do this :)

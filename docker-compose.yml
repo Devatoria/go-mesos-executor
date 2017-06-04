@@ -15,7 +15,7 @@ services:
     depends_on:
       - zookeeper
   mesos_agent:
-    image: mesosphere/mesos-agent:1.2.0
+    build: .
     network_mode: host
     privileged: true
     volumes:
