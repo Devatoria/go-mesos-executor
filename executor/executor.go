@@ -191,6 +191,10 @@ func (e *Executor) handleLaunch(ev *executor.Event) error {
 	task := ev.GetLaunch().GetTask()
 	e.UnackedTasks[task.GetTaskID()] = task
 
+	logger.GetInstance().Development.Debug("Launching a task",
+		zap.Reflect("task", task),
+	)
+
 	// Get task resources
 	mem, err := getMemoryLimit(task)
 	if err != nil {

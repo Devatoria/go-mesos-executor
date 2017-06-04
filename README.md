@@ -25,7 +25,7 @@ When at least one IP is injected, the hook appends two extra rules at the very e
 
 Since Mesos 1.1.0, health checks should be done locally, by the executor, in order to avoid network issues and be more scalable. Because it would not be a good idea to make these checks to be containerizer dependent (hammering the Docker daemon for this is not a good idea), these checks should be executor directly in the container namespace (network for HTTP(S)/TCP, mount for commands). This can be done easily (and is already done in the ACL hook).
 
-Mesos native health checks are actually not available in Marathon UI, and can be tested only when sending raw JSON. You must prefix the check protocol with `MESOS_`.
+Mesos native health checks are actually not available in Marathon UI, and can be tested only when sending raw JSON. You must prefix the check protocol with `MESOS_`. Another thing to know is that you can only have one Mesos native health check per task.
 
 ### Design
 
