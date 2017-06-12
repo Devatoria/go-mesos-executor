@@ -1,10 +1,10 @@
 # go-mesos-executor
 
-This is a custom container Apache Mesos executor written in Go. It actually can launch Docker containers but is designed to accept others container engines as soon as they implement the container interface. The particuliarity of this executor is the fact that it can use hooks to do actions in pre-start, post-start and post-start.
+This is a custom container Apache Mesos executor written in Go. It actually can launch Docker containers but is designed to accept others container engines as soon as they implement the container interface. The particuliarity of this executor is the fact that it can use hooks to do actions at some container life steps.
 
 ## Hooks system
 
-This executor implements a hook system, allowing you to run custom functions on `pre-create`, `pre-run`, `post-run`, `pre-stop` and `post-stop`. The `containerizer` and the task information are passed to hooks so you can interact with containers directly or even manipulate task information **before running the container**.
+This executor implements a hook system, allowing you to run custom functions on `pre-create`, `pre-run`, `post-run`, `pre-stop` and `post-stop`. The `containerizer` and the task information are passed to hooks so you can interact with containers directly or even manipulate task data **before running the container** (eg. to sandbox mount path).
 
 You can take a look into the `hook` folder to view some examples.
 
@@ -29,20 +29,63 @@ When at least one IP is injected, the hook appends two extra rules at the very e
 
 ### Introduction
 
-Since Mesos 1.1.0, health checks should be done locally, by the executor, in order to avoid network issues and be more scalable. Because it would not be a good idea to make these checks to be containerizer dependent (hammering the Docker daemon for this is not a good idea), these checks should be executor directly in the container namespace (network for HTTP(S)/TCP, mount for commands). This can be done easily (and is already done in the ACL hook).
+Since Mesos 1.1.0, health checks should be done locally, by the executor, in order to avoid network issues and be more scalable. Because the health check system should not be containerizer dependent, all checks are done by entering required namespaces and execute commands.
 
-Mesos native health checks are actually not available in Marathon UI, and can be tested only when sending raw JSON. You must prefix the check protocol with `MESOS_`. Another thing to know is that you can only have one Mesos native health check per task.
+Please note that Mesos native health checks are actually not available in Marathon UI, and can be tested only when sending raw JSON. You must prefix the check protocol with `MESOS_` (only for HTTP and TCP). Another thing to know is that you can only have one Mesos native health check per task.
 
 ### Design
 
-Health check design is to define, but will be simple: a health checker, which is a simple channel based worker with a slice of checks to executor periodically. The executor struct must have its own health checker which sends results associated to task ID, and then update status to healthy or unhealthy if needed.
+The design is really simple: each task has one checker, in charge to execute one check periodically and to send result to the executor core using a channel. The runtime is done like this:
+
+* wait for `delay` seconds before starting first check
+* check periodically with timeout
+  * if check is `healthy`, just consider the `grace period` as ended and send result
+  * if check is `unhealthy`, send result (to update status) and
+    * if we are in the `grace period`, just continue
+    * else, if the `consecutive failures threshold` is not reached, just continue
+    * else, the task should be killed
+
+To tell the executore core to stop the task, the checker does it in a 3-steps design:
+
+* trigger the `Done` channel (to tell that the checker has finished its work)
+* wait for the core to trigger the `Quit` channel (to tell the checker to free resources)
+* trigger the `Exited` channel (to tell the core that everything is done, resources are free)
+
+This is a security pattern to avoid a check to stay stuck when core kills the checker. It ensures that the work done by the checker is finished.
+
+Here are how the different health checks are implemented. Please note that these health checks lock the executing goroutine to its actual thread during the check to avoid namespace switching due to goroutine multiplexing.
+
+### HTTP health check
+
+* enter container network namespace (only if in bridged network mode)
+* open a TCP connection to the given port to check
+* write a raw HTTP request
+* read response and check status code
+* exit container network namespace (only if in bridged network mode)
+
+Please note that `http.Get` can't be used here because runtime default transport (round tripper) launches a lot of goroutines, making the call to be done in another thread (and so, to do not be inside the container network namespace).
+
+### TCP health check
+
+* enter container network namespace (only if in bridged network mode)
+* open a TCP connection to the given port to check
+* exit container network namespace (only if in bridged network mode)
+
+### Command health check
+
+* define which namespaces to enter (at least, mount namespace, + network namespace if in bridged mode)
+* prepare `nsenter` command to launch (wrapped in a shell command if needed)
+* run the command in defined namespaces
+
+Please note that you can't get inside the mount namespace of a process in Go because of multithreading. In fact, even by locking the goroutine to a specific thread can't fix it. `setns` syscall must be called in a single-threaded context. You can, at least, call this syscall using Cgo (and constructor trick) to execute C code before running the Go runtime (and so, run this C code in a single-threaded context). But it doesn't allow to dynamically join a mount namespace while running. This is why I decided to use the [nsenter](http://man7.org/linux/man-pages/man1/nsenter.1.html) package that allows to execute a command into defined namespaces.
+
+Please take a look at [this issue](https://stackoverflow.com/questions/25704661/calling-setns-from-go-returns-einval-for-mnt-namespace) and [this issue](https://github.com/golang/go/issues/8676) to know more about the `setns` Go issue.
 
 ### References
 
 * http://mesos.apache.org/documentation/latest/health-checks/#mesos-native-health-checks
 * http://mesos.apache.org/documentation/latest/health-checks/#under-the-hood
 * https://github.com/mesosphere/health-checks-scale-tests/blob/06ac7a2f0fa52836fedfd4b26fdb5420b5ab207e/README.md
-* Why we can't use setns directly from Go code: https://github.com/golang/go/issues/8676
 
 ## Configuration file
 
