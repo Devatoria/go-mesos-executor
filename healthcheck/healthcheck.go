@@ -21,14 +21,14 @@ import (
 // Checker is a health checker in charge to run check and say
 // it task is healthy or unhealthy
 type Checker struct {
-	ConsecutiveFailures uint32
-	Done                chan struct{}
-	Exited              chan struct{}
-	GracePeriodExpired  *uint32
-	Healthy             chan bool
-	Pid                 int
-	TaskInfo            *mesos.TaskInfo
-	Quit                chan struct{}
+	ConsecutiveFailures uint32          // Consecutive failures count
+	Done                chan struct{}   // Done chan is triggered when the checker has finished its work (task is unhealthy)
+	Exited              chan struct{}   // Exited chan is triggered when the checker has freed its resources
+	GracePeriodExpired  *uint32         // Grace period boolean, using uint32 to be atomic
+	Healthy             chan bool       // Result chan
+	Pid                 int             // Pid in which we enter namespace
+	TaskInfo            *mesos.TaskInfo // The info of the checked task
+	Quit                chan struct{}   // Quit chan is triggered by the core to tell the checker to stop its work
 }
 
 // NewChecker instanciate a health checker with given health check
