@@ -128,7 +128,7 @@ You can access Marathon framework UI using your `http://<IP>:8080/`. Executor lo
 
 ## Run tests
 
-You can run unit tests using `make test`.
+You can run tests using `make test`. Tests are using `testify` package to create `suite` and ensure tests are always ran in the same conditions. Some external packages are monkey patched in order to emulate its behavior. Finally, a fake containerizer (implementing the containerizer interface) is in the `types` package and is only used for testing.
 
 ## TODO
 
