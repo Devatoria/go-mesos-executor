@@ -97,7 +97,7 @@ func (c *DockerContainerizer) ContainerCreate(info Info) (string, error) {
 	}
 
 	// Prepare container
-	logger.GetInstance().Development.Debug("Creating a new container",
+	logger.GetInstance().Debug("Creating a new container",
 		zap.String("networkMode", networkMode),
 		zap.Reflect("portsMappings", portsMappings),
 	)

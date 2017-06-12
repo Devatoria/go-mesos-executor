@@ -178,14 +178,14 @@ func (e *Executor) Execute() error {
 	}
 
 	// Now, executor is shutting down (every tasks have been killed)
-	logger.GetInstance().Production.Info("All tasks have been killed. Now exiting, bye bye.")
+	logger.GetInstance().Info("All tasks have been killed. Now exiting, bye bye.")
 
 	return nil
 }
 
 // handleSubscribed handles subscribed events
 func (e *Executor) handleSubscribed(ev *executor.Event) error {
-	logger.GetInstance().Production.Info("Handled SUBSCRIBED event")
+	logger.GetInstance().Info("Handled SUBSCRIBED event")
 	e.AgentInfo = ev.GetSubscribed().GetAgentInfo()
 	e.ExecutorInfo = ev.GetSubscribed().GetExecutorInfo()
 	e.FrameworkInfo = ev.GetSubscribed().GetFrameworkInfo()
@@ -195,7 +195,7 @@ func (e *Executor) handleSubscribed(ev *executor.Event) error {
 
 // handleLaunch puts given task in unacked tasks and launches it
 func (e *Executor) handleLaunch(ev *executor.Event) error {
-	logger.GetInstance().Production.Info("Handled LAUNCH event")
+	logger.GetInstance().Info("Handled LAUNCH event")
 	task := ev.GetLaunch().GetTask()
 
 	// Lock mutex
@@ -203,7 +203,7 @@ func (e *Executor) handleLaunch(ev *executor.Event) error {
 	e.UnackedTasks[task.GetTaskID()] = task
 	e.UnackedMutex.Unlock()
 
-	logger.GetInstance().Development.Debug("Launching a task",
+	logger.GetInstance().Debug("Launching a task",
 		zap.Reflect("task", task),
 	)
 
@@ -284,13 +284,13 @@ func (e *Executor) handleLaunch(ev *executor.Event) error {
 
 // handleKill kills given task and updates status
 func (e *Executor) handleKill(ev *executor.Event) error {
-	logger.GetInstance().Production.Info("Handled KILL event")
+	logger.GetInstance().Info("Handled KILL event")
 	taskID := ev.GetKill().GetTaskID()
 
 	// Get container ID associated to the given task
 	containerTaskInfo, ok := e.ContainerTasks[taskID]
 	if !ok {
-		logger.GetInstance().Production.Warn("Error while killing the given task: task not found in running tasks",
+		logger.GetInstance().Warn("Error while killing the given task: task not found in running tasks",
 			zap.String("taskID", taskID.GetValue()),
 		)
 
@@ -336,7 +336,7 @@ func (e *Executor) handleKill(ev *executor.Event) error {
 
 // handleAcknowledged removes the given task/update from unacked
 func (e *Executor) handleAcknowledged(ev *executor.Event) error {
-	logger.GetInstance().Production.Info("Handled ACKNOWLEDGED event")
+	logger.GetInstance().Info("Handled ACKNOWLEDGED event")
 
 	// Lock mutex
 	e.UnackedMutex.Lock()
@@ -351,7 +351,7 @@ func (e *Executor) handleAcknowledged(ev *executor.Event) error {
 
 // handleMessage receives a message from the scheduler and logs it
 func (e *Executor) handleMessage(ev *executor.Event) error {
-	logger.GetInstance().Production.Info("Handled MESSAGE event",
+	logger.GetInstance().Info("Handled MESSAGE event",
 		zap.String("eventMessage", string(ev.GetMessage().GetData())),
 	)
 
@@ -360,11 +360,11 @@ func (e *Executor) handleMessage(ev *executor.Event) error {
 
 // handleShutdown kills all tasks before shuting down the executor
 func (e *Executor) handleShutdown(ev *executor.Event) error {
-	logger.GetInstance().Production.Info("Handled SHUTDOWN event")
+	logger.GetInstance().Info("Handled SHUTDOWN event")
 
 	// Kill all tasks
 	for taskID, containerTaskInfo := range e.ContainerTasks {
-		logger.GetInstance().Production.Info("Killing task",
+		logger.GetInstance().Info("Killing task",
 			zap.String("taskID", taskID.GetValue()),
 		)
 
@@ -403,7 +403,7 @@ func (e *Executor) handleShutdown(ev *executor.Event) error {
 
 // handleError returns an error returned by the agent
 func (e *Executor) handleError(ev *executor.Event) error {
-	logger.GetInstance().Production.Info("Handled ERROR event")
+	logger.GetInstance().Info("Handled ERROR event")
 
 	return fmt.Errorf("%s", ev.GetError().GetMessage())
 }
@@ -488,7 +488,7 @@ func (e *Executor) healthCheck(taskID mesos.TaskID) {
 		select {
 		// Healthy state update
 		case healthy := <-hc.Healthy:
-			logger.GetInstance().Production.Info("Task health has changed",
+			logger.GetInstance().Info("Task health has changed",
 				zap.Bool("healthy", healthy),
 			)
 
@@ -498,7 +498,7 @@ func (e *Executor) healthCheck(taskID mesos.TaskID) {
 			e.updateStatus(status)
 			// Health checker has ended, we must kill the associated task
 		case <-hc.Done:
-			logger.GetInstance().Production.Info("Health checker has ended, task is going to be killed")
+			logger.GetInstance().Info("Health checker has ended, task is going to be killed")
 
 			e.handleKill(&executor.Event{
 				Kill: &executor.Event_Kill{
@@ -508,7 +508,7 @@ func (e *Executor) healthCheck(taskID mesos.TaskID) {
 
 			return
 		case <-hc.Exited:
-			logger.GetInstance().Production.Info("Health checker has been removed, freeing...")
+			logger.GetInstance().Info("Health checker has been removed, freeing...")
 
 			return
 		}

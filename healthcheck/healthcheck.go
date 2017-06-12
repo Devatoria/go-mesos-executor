@@ -66,7 +66,7 @@ func (c *Checker) Run() {
 		<-gracePeriodTimer.C
 		atomic.StoreUint32(c.GracePeriodExpired, 1)
 
-		logger.GetInstance().Development.Debug("Grace period expired")
+		logger.GetInstance().Debug("Grace period expired")
 	}()
 
 	// Define check function to use (HTTP/TCP/COMMAND)
@@ -79,7 +79,7 @@ func (c *Checker) Run() {
 	case mesos.HealthCheck_COMMAND:
 		checkFunc = c.checkCommand
 	default: // Unsupported health check type
-		logger.GetInstance().Production.Error("Unknown or unsupported health check type... Mark task as unhealthy",
+		logger.GetInstance().Error("Unknown or unsupported health check type... Mark task as unhealthy",
 			zap.String("type", c.TaskInfo.GetHealthCheck().GetType().String()),
 		)
 		c.Healthy <- false
@@ -98,7 +98,7 @@ func (c *Checker) Run() {
 			go checkFunc(result)
 			healthy = <-result
 
-			logger.GetInstance().Development.Debug("Health check ticker has ticked",
+			logger.GetInstance().Debug("Health check ticker has ticked",
 				zap.Bool("healthy", healthy),
 			)
 
@@ -128,7 +128,7 @@ func (c *Checker) Run() {
 			c.Healthy <- healthy
 		// Executor asked the checker to quit
 		case <-c.Quit:
-			logger.GetInstance().Development.Debug("Shutting down checker")
+			logger.GetInstance().Debug("Shutting down checker")
 			c.Exited <- struct{}{}
 
 			return
@@ -147,7 +147,7 @@ func (c *Checker) checkHTTP(result chan bool) {
 		// Enter container network namespace
 		err := namespace.EnterNetworkNamespace(c.Pid)
 		if err != nil {
-			logger.GetInstance().Development.Debug("Error while getting container namespace",
+			logger.GetInstance().Debug("Error while getting container namespace",
 				zap.Error(err),
 			)
 
@@ -166,7 +166,7 @@ func (c *Checker) checkHTTP(result chan bool) {
 	conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", port), time.Duration(c.TaskInfo.GetHealthCheck().GetTimeoutSeconds())*time.Second)
 	defer conn.Close()
 	if err != nil {
-		logger.GetInstance().Production.Error("Error while connecting to health check socket",
+		logger.GetInstance().Error("Error while connecting to health check socket",
 			zap.Error(err),
 		)
 
@@ -182,7 +182,7 @@ func (c *Checker) checkHTTP(result chan bool) {
 	status := bufio.NewReader(conn)
 	response, err := http.ReadResponse(status, nil)
 	if err != nil {
-		logger.GetInstance().Production.Error("Error while reading HTTP response",
+		logger.GetInstance().Error("Error while reading HTTP response",
 			zap.Error(err),
 		)
 
@@ -193,7 +193,7 @@ func (c *Checker) checkHTTP(result chan bool) {
 
 	// Check status code: should be between 200 and 399
 	if response.StatusCode < 200 || response.StatusCode > 399 {
-		logger.GetInstance().Production.Error("Unexpected status code",
+		logger.GetInstance().Error("Unexpected status code",
 			zap.Int("code", response.StatusCode),
 		)
 
@@ -215,7 +215,7 @@ func (c *Checker) checkTCP(result chan bool) {
 		// Enter container network namespace
 		err := namespace.EnterNetworkNamespace(c.Pid)
 		if err != nil {
-			logger.GetInstance().Development.Debug("Error while getting container namespace",
+			logger.GetInstance().Debug("Error while getting container namespace",
 				zap.Error(err),
 			)
 
@@ -230,7 +230,7 @@ func (c *Checker) checkTCP(result chan bool) {
 	conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", port), time.Duration(c.TaskInfo.GetHealthCheck().GetTimeoutSeconds())*time.Second)
 	defer conn.Close()
 	if err != nil {
-		logger.GetInstance().Production.Error("Error while connecting to health check socket",
+		logger.GetInstance().Error("Error while connecting to health check socket",
 			zap.Error(err),
 		)
 
@@ -279,7 +279,7 @@ func (c *Checker) checkCommand(result chan bool) {
 	cancel()
 
 	if err != nil {
-		logger.GetInstance().Production.Error("Error while executing health check command",
+		logger.GetInstance().Error("Error while executing health check command",
 			zap.String("stderr", stderr),
 			zap.Error(err),
 		)
@@ -289,7 +289,7 @@ func (c *Checker) checkCommand(result chan bool) {
 		return
 	}
 
-	logger.GetInstance().Development.Debug("Health check has been done",
+	logger.GetInstance().Debug("Health check has been done",
 		zap.String("stdout", stdout),
 	)
 

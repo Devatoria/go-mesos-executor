@@ -146,8 +146,5 @@ You can run tests using `make test`. Tests are using `testify` package to create
   * Write tests
 * Containerizer
   * libcontainer (runc)
-* Logger
-  * Review logger (with only one logger, configurable)
-  * Remove stack trace
 
 The executor actually does not handle custom parameters sent to Docker CLI. This has to be done with a matching enum (I think) and it is actually a little bit boring to do this :)

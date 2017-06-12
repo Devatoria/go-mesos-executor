@@ -1,30 +1,32 @@
 package logger
 
 import (
+	"log"
 	"sync"
+
+	"github.com/spf13/viper"
 
 	"go.uber.org/zap"
 )
 
-// Logger defines the application logger structure, with development (debug) and production loggers
-type Logger struct {
-	Development *zap.Logger
-	Production  *zap.Logger
-}
-
-var instance *Logger
+var instance *zap.Logger
 var once sync.Once
 
-// GetInstance returns (and, if needed, initializes) the logger instance
-func GetInstance() *Logger {
+// GetInstance initializes a logger instance (if needed) and returns it
+func GetInstance() *zap.Logger {
 	once.Do(func() {
-		development, _ := zap.NewDevelopment()
-		production, _ := zap.NewProduction()
-
-		instance = &Logger{
-			Development: development,
-			Production:  production,
+		prodConfig := zap.NewProductionConfig()
+		prodConfig.DisableStacktrace = true
+		if viper.GetBool("debug") {
+			prodConfig.Level.SetLevel(zap.DebugLevel) // Enable debug mode if set in config
 		}
+
+		prod, err := prodConfig.Build()
+		if err != nil {
+			log.Fatalf("Error while initializing production logger: %v", err)
+		}
+
+		instance = prod
 	})
 
 	return instance

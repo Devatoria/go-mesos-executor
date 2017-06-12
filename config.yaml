@@ -1,4 +1,5 @@
-hooks:
+debug: true # Enable debug mode (more logs)
+hooks: # Enabled hooks
   - acl
   - removeContainer
-proc_path: /mnt/proc
+proc_path: /mnt/proc # Mount path of host proc folder

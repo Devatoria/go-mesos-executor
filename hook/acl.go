@@ -64,7 +64,7 @@ var ACLHook = Hook{
 				return fmt.Errorf("Invalid IP: %s", ip)
 			}
 
-			logger.GetInstance().Production.Info("Injecting iptables rules",
+			logger.GetInstance().Info("Injecting iptables rules",
 				zap.Reflect("allowed", parsedIPs),
 			)
 
@@ -118,7 +118,7 @@ func injectRuleIntoNamespace(ns netns.NsHandle, rule string) error {
 		return fmt.Errorf("Current namespace and given namespace have the same unique ID: %s", ns.UniqueId())
 	}
 
-	logger.GetInstance().Development.Debug("Injecting a rule into the container namespace",
+	logger.GetInstance().Debug("Injecting a rule into the container namespace",
 		zap.String("namespace", ns.UniqueId()),
 		zap.String("rule", rule),
 	)

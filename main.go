@@ -33,7 +33,7 @@ var rootCmd = &cobra.Command{
 	Use:   "mesos-docker-executor",
 	Short: "Custom Mesos Docker executor",
 	Run: func(cmd *cobra.Command, args []string) {
-		logger.GetInstance().Production.Info("Initializing the executor",
+		logger.GetInstance().Info("Initializing the executor",
 			zap.String("executorID", executorID),
 			zap.String("frameworkID", frameworkID),
 		)
@@ -41,14 +41,14 @@ var rootCmd = &cobra.Command{
 		// Prepare docker containerizer
 		c, err := container.NewDockerContainerizer(dockerSocket)
 		if err != nil {
-			logger.GetInstance().Production.Fatal("An error occured while initializing the containerizer",
+			logger.GetInstance().Fatal("An error occured while initializing the containerizer",
 				zap.Error(err),
 			)
 		}
 
 		// Create hook manager
 		hooks := viper.GetStringSlice("hooks")
-		logger.GetInstance().Production.Info("Creating hook manager",
+		logger.GetInstance().Info("Creating hook manager",
 			zap.Reflect("hooks", hooks),
 		)
 		m := hook.NewManager(hooks)
@@ -62,7 +62,7 @@ var rootCmd = &cobra.Command{
 			FrameworkID:   frameworkID,
 		}, c, m)
 		if err := e.Execute(); err != nil {
-			logger.GetInstance().Production.Fatal("An error occured while running the executor",
+			logger.GetInstance().Fatal("An error occured while running the executor",
 				zap.Error(err),
 			)
 		}
@@ -87,6 +87,8 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&stopTimeout, "stop_timeout", "", "Timeout used to stop the container")
 
 	// Custom flags
+	rootCmd.PersistentFlags().Bool("debug", true, "Enable debug mode")
+	viper.BindPFlag("debug", rootCmd.PersistentFlags().Lookup("debug"))
 	rootCmd.PersistentFlags().StringSlice("hooks", []string{}, "Enabled hooks")
 	viper.BindPFlag("hooks", rootCmd.PersistentFlags().Lookup("hooks"))
 	rootCmd.PersistentFlags().String("proc_path", "/proc", "Proc mount path")
@@ -109,7 +111,7 @@ func readConfig() {
 	frameworkID = viper.GetString("framework_id")
 
 	if err := viper.ReadInConfig(); err != nil {
-		logger.GetInstance().Production.Fatal("An error occured while reading the configuration file",
+		logger.GetInstance().Fatal("An error occured while reading the configuration file",
 			zap.Error(err),
 		)
 	}
@@ -117,7 +119,7 @@ func readConfig() {
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {
-		logger.GetInstance().Production.Fatal("An error occured while running the root command",
+		logger.GetInstance().Fatal("An error occured while running the root command",
 			zap.Error(err),
 		)
 	}

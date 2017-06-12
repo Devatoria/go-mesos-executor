@@ -17,7 +17,7 @@ func init() {
 	var err error
 	current, err = netns.Get()
 	if err != nil {
-		logger.GetInstance().Production.Fatal("Error while retrieving current namespace",
+		logger.GetInstance().Fatal("Error while retrieving current namespace",
 			zap.Error(err),
 		)
 	}
@@ -38,7 +38,7 @@ func EnterNetworkNamespace(pid int) error {
 		return fmt.Errorf("Process network namespace and current network namespace are the same (ns: %s)", ns.UniqueId())
 	}
 
-	logger.GetInstance().Development.Debug("Entering process network namespace",
+	logger.GetInstance().Debug("Entering process network namespace",
 		zap.String("ns", ns.UniqueId()),
 		zap.Int("pid", pid),
 	)
@@ -50,7 +50,7 @@ func EnterNetworkNamespace(pid int) error {
 func ExitNetworkNamespace() error {
 	defer runtime.UnlockOSThread() // Do not forget to unlock thread
 
-	logger.GetInstance().Development.Debug("Exiting process network namespace",
+	logger.GetInstance().Debug("Exiting process network namespace",
 		zap.String("ns", current.UniqueId()),
 	)
 

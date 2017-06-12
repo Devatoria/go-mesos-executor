@@ -44,7 +44,7 @@ func (m *Manager) RegisterHooks(when string, hooks ...*Hook) error {
 	for _, hook := range hooks {
 		// Pass on disabled hooks
 		if _, ok := m.EnabledHooks[hook.Name]; !ok {
-			logger.GetInstance().Development.Debug(fmt.Sprintf("Disabling %s %s hook", hook.Name, when))
+			logger.GetInstance().Debug(fmt.Sprintf("Disabling %s %s hook", hook.Name, when))
 			continue
 		}
 
@@ -72,7 +72,7 @@ func (m *Manager) RunPreCreateHooks(c container.Containerizer, info *types.Conta
 	for _, hook := range m.PreCreateHooks {
 		err := hook.Execute(c, info)
 		if err != nil {
-			logger.GetInstance().Production.Error(fmt.Sprintf("%s pre-create hook has failed", hook.Name), zap.Error(err))
+			logger.GetInstance().Error(fmt.Sprintf("%s pre-create hook has failed", hook.Name), zap.Error(err))
 
 			return err
 		}
@@ -86,7 +86,7 @@ func (m *Manager) RunPreRunHooks(c container.Containerizer, info *types.Containe
 	for _, hook := range m.PreRunHooks {
 		err := hook.Execute(c, info)
 		if err != nil {
-			logger.GetInstance().Production.Error(fmt.Sprintf("%s pre-run hook has failed", hook.Name), zap.Error(err))
+			logger.GetInstance().Error(fmt.Sprintf("%s pre-run hook has failed", hook.Name), zap.Error(err))
 
 			return err
 		}
@@ -100,7 +100,7 @@ func (m *Manager) RunPostRunHooks(c container.Containerizer, info *types.Contain
 	for _, hook := range m.PostRunHooks {
 		err := hook.Execute(c, info)
 		if err != nil {
-			logger.GetInstance().Production.Error(fmt.Sprintf("%s post-run hook has failed", hook.Name), zap.Error(err))
+			logger.GetInstance().Error(fmt.Sprintf("%s post-run hook has failed", hook.Name), zap.Error(err))
 
 			return err
 		}
@@ -114,7 +114,7 @@ func (m *Manager) RunPreStopHooks(c container.Containerizer, info *types.Contain
 	for _, hook := range m.PreStopHooks {
 		err := hook.Execute(c, info)
 		if err != nil {
-			logger.GetInstance().Production.Error(fmt.Sprintf("%s pre-stop hook has failed", hook.Name), zap.Error(err))
+			logger.GetInstance().Error(fmt.Sprintf("%s pre-stop hook has failed", hook.Name), zap.Error(err))
 
 			return err
 		}
@@ -128,7 +128,7 @@ func (m *Manager) RunPostStopHooks(c container.Containerizer, info *types.Contai
 	for _, hook := range m.PostStopHooks {
 		err := hook.Execute(c, info)
 		if err != nil {
-			logger.GetInstance().Production.Error(fmt.Sprintf("%s post-stop hook has failed", hook.Name), zap.Error(err))
+			logger.GetInstance().Error(fmt.Sprintf("%s post-stop hook has failed", hook.Name), zap.Error(err))
 
 			return err
 		}

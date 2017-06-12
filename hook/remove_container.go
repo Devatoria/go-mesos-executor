@@ -13,7 +13,7 @@ var RemoveContainerHook = Hook{
 	Name:     "removeContainer",
 	Priority: 0,
 	Execute: func(c container.Containerizer, info *types.ContainerTaskInfo) error {
-		logger.GetInstance().Production.Info("Removing container",
+		logger.GetInstance().Info("Removing container",
 			zap.String("containerID", info.ContainerID),
 		)
 
