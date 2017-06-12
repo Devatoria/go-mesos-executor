@@ -164,7 +164,6 @@ func (c *Checker) checkHTTP(result chan bool) {
 	port := c.TaskInfo.GetHealthCheck().GetHTTP().GetPort()
 	path := c.TaskInfo.GetHealthCheck().GetHTTP().GetPath()
 	conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", port), time.Duration(c.TaskInfo.GetHealthCheck().GetTimeoutSeconds())*time.Second)
-	defer conn.Close()
 	if err != nil {
 		logger.GetInstance().Error("Error while connecting to health check socket",
 			zap.Error(err),
@@ -174,6 +173,7 @@ func (c *Checker) checkHTTP(result chan bool) {
 
 		return
 	}
+	defer conn.Close()
 
 	// Do raw HTTP request and get status
 	// Then, parse it into an HTTP response in order
@@ -228,7 +228,6 @@ func (c *Checker) checkTCP(result chan bool) {
 	// Try to dial on health check port
 	port := c.TaskInfo.GetHealthCheck().GetTCP().GetPort()
 	conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", port), time.Duration(c.TaskInfo.GetHealthCheck().GetTimeoutSeconds())*time.Second)
-	defer conn.Close()
 	if err != nil {
 		logger.GetInstance().Error("Error while connecting to health check socket",
 			zap.Error(err),
@@ -238,6 +237,7 @@ func (c *Checker) checkTCP(result chan bool) {
 
 		return
 	}
+	defer conn.Close()
 
 	result <- true
 }
