@@ -134,6 +134,7 @@ You can run tests using `make test`. Tests are using `testify` package to create
 
 * Implement docker parameters
   * Commands
+* Return container error message when an error occurs during container run
 * Find a way to handle health checks with ACL hook when masquerading is enabled (leading to see the caller IP in the container instead of the bridge IP)
 * Manage hooks priority
 * Add some useful hooks
