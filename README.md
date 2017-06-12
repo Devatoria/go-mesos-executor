@@ -76,7 +76,8 @@ You can run unit tests using `make test`.
   * Forced network mode (bridged)
 * Health checks: please take a look at health checks section
   * Add HTTPS support (not tested)
-  * Manage defunct processes when stopping the executor while running a command health check
+  * Manage defunct processes when stopping the executor while running a command health check (probably due to shell wrapping when timeout occurs)
+  * Write tests
 * Containerizer
   * libcontainer (runc)
 * Logger
