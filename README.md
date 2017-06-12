@@ -2,9 +2,30 @@
 
 This is a custom container Apache Mesos executor written in Go. It actually can launch Docker containers but is designed to accept others container engines as soon as they implement the container interface. The particuliarity of this executor is the fact that it can use hooks to do actions at some container life steps.
 
+## General design
+
+This project uses the new (v1) Mesos HTTP API to communicate with the agent.
+
+* Subscribe to the agent and send its unacknowledged updates and tasks (in case we re-subscribe after we have lost the connection to the agent)
+* Handle the `subscribed` event
+* Handle the `launch` event
+  * Launch `pre-create` hooks
+  * Create the container
+  * Launch `pre-run` hooks
+  * Run the container
+  * Launch `post-run` hooks
+  * Set task status
+* Handle the `acknowledged` event
+* Handle intermediate events such as `message` or `error` from the agent, or just some acknowledgement for tasks updates
+* Handle the `kill` or `shutdown` event
+  * Launch `pre-stop` hooks
+  * Kill the task(s)
+  * Launch `post-stop` hooks
+* Shutdown the executor
+
 ## Hooks system
 
-This executor implements a hook system, allowing you to run custom functions on `pre-create`, `pre-run`, `post-run`, `pre-stop` and `post-stop`. The `containerizer` and the task information are passed to hooks so you can interact with containers directly or even manipulate task data **before running the container** (eg. to sandbox mount path).
+This executor implements a hook system, allowing you to run custom functions on `pre-create`, `pre-run`, `post-run`, `pre-stop` and `post-stop`. The `containerizer` and the task information are passed to hooks so you can interact with containers directly or even manipulate task data **before running the container** (eg. to sandbox mount path). All hooks are executed sequentially and synchronously, and an error in one hook make the executor to stop the running task (and send an error to the scheduler).
 
 You can take a look into the `hook` folder to view some examples.
 
