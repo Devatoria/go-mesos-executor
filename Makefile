@@ -11,11 +11,11 @@ race:
 
 .PHONY: test
 test:
-	go test ./...
+	go test ./... | grep -v /vendor/
 
 .PHONY: testv
 testv:
-	go test -v ./...
+	go test -v ./... | grep -v /vendor/
 
 .PHONY: docker
 docker: build

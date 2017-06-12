@@ -132,8 +132,6 @@ You can run tests using `make test`. Tests are using `testify` package to create
 
 ## TODO
 
-* Send TASK_FAILED to agent when throwing an error while running (eg. if we fail to run a container) (actually panic)
-* Find a way to send errors from executor to scheduler (eg. display custom message in Marathon UI debug tab) (can be done with Message field and TASK_FAILED status)
 * Implement docker parameters
   * Commands
 * Find a way to handle health checks with ACL hook when masquerading is enabled (leading to see the caller IP in the container instead of the bridge IP)

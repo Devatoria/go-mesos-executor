@@ -237,16 +237,19 @@ func (s *ExecutorTestSuite) TestHandleLaunch() {
 	// Pre-create hook case
 	s.executor.HookManager.RegisterHooks("pre-create", s.errorHook)
 	assert.Error(s.T(), s.executor.handleLaunch(&ev))
+	assert.Equal(s.T(), *mesos.TASK_FAILED.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_FAILED update
 
 	// Pre-run hook case
 	s.executor.HookManager.PreCreateHooks = []*hook.Hook{}
 	s.executor.HookManager.RegisterHooks("pre-run", s.errorHook)
 	assert.Error(s.T(), s.executor.handleLaunch(&ev))
+	assert.Equal(s.T(), *mesos.TASK_FAILED.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_FAILED update
 
 	// Post-run hook case
 	s.executor.HookManager.PreRunHooks = []*hook.Hook{}
 	s.executor.HookManager.RegisterHooks("post-run", s.errorHook)
 	assert.Error(s.T(), s.executor.handleLaunch(&ev))
+	assert.Equal(s.T(), *mesos.TASK_FAILED.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_FAILED update
 
 	// Nominal case
 	s.executor.HookManager.PostRunHooks = []*hook.Hook{} // Remove previously added failing hook
@@ -254,14 +257,8 @@ func (s *ExecutorTestSuite) TestHandleLaunch() {
 	assert.NotEmpty(s.T(), s.executor.UnackedTasks)      // Should not be empty (task waiting for acknowledgment)
 	assert.NotEmpty(s.T(), s.executor.ContainerTasks)    // Should not be empty (new running task for this container)
 
-	assert.NotEmpty(s.T(), s.executor.UnackedUpdates) // Should not be empty (TASK_RUNNING update)
-	var updateKey string
-	for k := range s.executor.UnackedUpdates {
-		updateKey = k
-		break
-	}
-	unackedUpdate := s.executor.UnackedUpdates[updateKey]
-	assert.Equal(s.T(), *mesos.TASK_RUNNING.Enum(), unackedUpdate.Status.GetState()) // Should be a TASK_RUNNIN update
+	assert.NotEmpty(s.T(), s.executor.UnackedUpdates)                                                         // Should not be empty (TASK_RUNNING update)
+	assert.Equal(s.T(), *mesos.TASK_RUNNING.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_FAILED update
 
 	containerTask := s.executor.ContainerTasks[s.taskInfo.GetTaskID()]
 	assert.Equal(s.T(), "fakeContainerID", containerTask.ContainerID) // Should be equal to the container ID
@@ -294,26 +291,22 @@ func (s *ExecutorTestSuite) TestHandleKill() {
 	// Should throw an error on hook fail
 	// Pre-stop hook case
 	s.executor.HookManager.RegisterHooks("pre-stop", s.errorHook)
-	assert.Error(s.T(), s.executor.handleLaunch(&ev))
+	assert.Error(s.T(), s.executor.handleKill(&ev))
+	assert.Equal(s.T(), *mesos.TASK_FAILED.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_FAILED update
 
 	// Post-stop hook case
 	s.executor.HookManager.PreStopHooks = []*hook.Hook{}
 	s.executor.HookManager.RegisterHooks("post-stop", s.errorHook)
-	assert.Error(s.T(), s.executor.handleLaunch(&ev))
+	assert.Error(s.T(), s.executor.handleKill(&ev))
+	assert.Equal(s.T(), *mesos.TASK_FAILED.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_FAILED update
 
 	// Nominal case
 	s.executor.HookManager.PostStopHooks = []*hook.Hook{}
 	assert.Nil(s.T(), s.executor.handleKill(&ev))  // Should return nil (kill successful)
 	assert.Empty(s.T(), s.executor.ContainerTasks) // Should be empty (task removed from container tasks)
 
-	assert.NotEmpty(s.T(), s.executor.UnackedUpdates) // Should not be empty (TASK_KILLED update)
-	var updateKey string
-	for k := range s.executor.UnackedUpdates {
-		updateKey = k
-		break
-	}
-	unackedUpdate := s.executor.UnackedUpdates[updateKey]
-	assert.Equal(s.T(), *mesos.TASK_KILLED.Enum(), unackedUpdate.Status.GetState()) // Should be a TASK_KILLED update
+	assert.NotEmpty(s.T(), s.executor.UnackedUpdates)                                                        // Should not be empty (TASK_KILLED update)
+	assert.Equal(s.T(), *mesos.TASK_KILLED.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_KILLED  update
 }
 
 // Check that:
@@ -340,27 +333,23 @@ func (s *ExecutorTestSuite) TestHandleShutdown() {
 	// Should throw an error on hook fail
 	// Pre-stop hook case
 	s.executor.HookManager.RegisterHooks("pre-stop", s.errorHook)
-	assert.Error(s.T(), s.executor.handleLaunch(&ev))
+	assert.Error(s.T(), s.executor.handleShutdown(&ev))
+	assert.Equal(s.T(), *mesos.TASK_FAILED.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_FAILED update
 
 	// Post-stop hook case
 	s.executor.HookManager.PreStopHooks = []*hook.Hook{}
 	s.executor.HookManager.RegisterHooks("post-stop", s.errorHook)
-	assert.Error(s.T(), s.executor.handleLaunch(&ev))
+	assert.Error(s.T(), s.executor.handleShutdown(&ev))
+	assert.Equal(s.T(), *mesos.TASK_FAILED.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_FAILED update
 
 	// Nominal case
 	s.executor.HookManager.PostStopHooks = []*hook.Hook{}
 	assert.Nil(s.T(), s.executor.handleShutdown(&ev)) // Should return nil (kill successful)
 	assert.NotEmpty(s.T(), s.executor.ContainerTasks) // Should not be empty (tasks are not removed because we're shutting down the executor AND accessing map values in a loop)
 
-	assert.NotEmpty(s.T(), s.executor.UnackedUpdates) // Should not be empty (TASK_KILLED update)
-	var updateKey string
-	for k := range s.executor.UnackedUpdates {
-		updateKey = k
-		break
-	}
-	unackedUpdate := s.executor.UnackedUpdates[updateKey]
-	assert.Equal(s.T(), *mesos.TASK_KILLED.Enum(), unackedUpdate.Status.GetState()) // Should be a TASK_KILLED update
-	assert.True(s.T(), s.executor.Shutdown)                                         // Should be set to true in order to stop main loops
+	assert.NotEmpty(s.T(), s.executor.UnackedUpdates)                                                        // Should not be empty (TASK_KILLED update)
+	assert.Equal(s.T(), *mesos.TASK_KILLED.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_KILLED update
+	assert.True(s.T(), s.executor.Shutdown)                                                                  // Should be set to true in order to stop main loops
 }
 
 // Check that we are receiving everything that we should
@@ -453,4 +442,20 @@ func (s *ExecutorTestSuite) TestGetCPUSharesLimit() {
 // Launch test suite
 func TestExecutorSuite(t *testing.T) {
 	suite.Run(t, new(ExecutorTestSuite))
+}
+
+func pullFirstUpdate(m map[string]executor.Call_Update) *executor.Call_Update {
+	var key string
+	var update *executor.Call_Update
+	for k, u := range m {
+		key = k
+		update = &u
+		break
+	}
+
+	if update != nil {
+		delete(m, key)
+	}
+
+	return update
 }

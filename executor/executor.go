@@ -210,12 +210,14 @@ func (e *Executor) handleLaunch(ev *executor.Event) error {
 	// Get task resources
 	mem, err := getMemoryLimit(task)
 	if err != nil {
+		e.throwError(task.GetTaskID(), err)
+
 		return err
 	}
 
 	cpuShares, err := getCPUSharesLimit(task)
 	if err != nil {
-		return err
+		return e.throwError(task.GetTaskID(), err)
 	}
 
 	// Create container info
@@ -233,39 +235,39 @@ func (e *Executor) handleLaunch(ev *executor.Event) error {
 	// Run pre-create hooks
 	err = e.HookManager.RunPreCreateHooks(e.Containerizer, e.ContainerTasks[task.TaskID])
 	if err != nil {
-		return err
+		return e.throwError(task.GetTaskID(), err)
 	}
 
 	// Create container
 	containerID, err := e.Containerizer.ContainerCreate(info)
 	if err != nil {
-		return err
+		return e.throwError(task.GetTaskID(), err)
 	}
 	e.ContainerTasks[task.TaskID].ContainerID = containerID // Set container ID when created
 
 	// Run pre-run hooks
 	err = e.HookManager.RunPreRunHooks(e.Containerizer, e.ContainerTasks[task.TaskID])
 	if err != nil {
-		return err
+		return e.throwError(task.GetTaskID(), err)
 	}
 
 	// Launch container
 	err = e.Containerizer.ContainerRun(containerID)
 	if err != nil {
-		return err
+		return e.throwError(task.GetTaskID(), err)
 	}
 
 	// Run post-run hooks
 	err = e.HookManager.RunPostRunHooks(e.Containerizer, e.ContainerTasks[task.TaskID])
 	if err != nil {
-		return err
+		return e.throwError(task.GetTaskID(), err)
 	}
 
 	// Initialize health checker for the current task and run checks
 	if task.HealthCheck != nil {
 		pid, err := e.Containerizer.ContainerGetPID(containerID)
 		if err != nil {
-			return err
+			return e.throwError(task.GetTaskID(), err)
 		}
 		e.HealthCheckersMutex.Lock()
 		e.HealthCheckers[task.GetTaskID()] = healthcheck.NewChecker(pid, &task)
@@ -292,7 +294,7 @@ func (e *Executor) handleKill(ev *executor.Event) error {
 			zap.String("taskID", taskID.GetValue()),
 		)
 
-		return fmt.Errorf("%s task not found, unable to kill it", taskID.GetValue())
+		return e.throwError(taskID, fmt.Errorf("%s task not found, unable to kill it", taskID.GetValue()))
 	}
 
 	// Quit and remove health checker (if existing)
@@ -307,19 +309,19 @@ func (e *Executor) handleKill(ev *executor.Event) error {
 	// Run pre-stop hooks
 	err := e.HookManager.RunPreStopHooks(e.Containerizer, containerTaskInfo)
 	if err != nil {
-		return err
+		return e.throwError(taskID, err)
 	}
 
 	// Stop container
 	err = e.Containerizer.ContainerStop(containerTaskInfo.ContainerID)
 	if err != nil {
-		return err
+		return e.throwError(taskID, err)
 	}
 
 	// Run post-stop hooks
 	err = e.HookManager.RunPostStopHooks(e.Containerizer, containerTaskInfo)
 	if err != nil {
-		return err
+		return e.throwError(taskID, err)
 	}
 
 	// Remove it from tasks
@@ -369,19 +371,19 @@ func (e *Executor) handleShutdown(ev *executor.Event) error {
 		// Run pre-stop hooks
 		err := e.HookManager.RunPreStopHooks(e.Containerizer, containerTaskInfo)
 		if err != nil {
-			return err
+			return e.throwError(taskID, err)
 		}
 
 		// Stop container
 		err = e.Containerizer.ContainerStop(containerTaskInfo.ContainerID)
 		if err != nil {
-			return err
+			return e.throwError(taskID, err)
 		}
 
 		// Run post-stop hooks
 		err = e.HookManager.RunPostStopHooks(e.Containerizer, containerTaskInfo)
 		if err != nil {
-			return err
+			return e.throwError(taskID, err)
 		}
 
 		// Update status
@@ -389,7 +391,7 @@ func (e *Executor) handleShutdown(ev *executor.Event) error {
 		status.State = mesos.TASK_KILLED.Enum()
 		err = e.updateStatus(status)
 		if err != nil {
-			return err
+			return e.throwError(taskID, err)
 		}
 	}
 
@@ -511,4 +513,22 @@ func (e *Executor) healthCheck(taskID mesos.TaskID) {
 			return
 		}
 	}
+}
+
+// throwError updates the task status to TASK_FAILED, sets
+// the given error as a message of the update, so the scheduler will be able
+// to display it to user, and finally return the error to allow the core
+// to handle it and throw it to main command
+func (e *Executor) throwError(taskID mesos.TaskID, err error) error {
+	// Wrap error message into task status update and send it
+	// Do not check the error on update until this throw is done just before exiting
+	// executor core (we can't do anything)
+	message := fmt.Sprintf("Executor error: %v", err)
+	status := e.newStatus(taskID)
+	status.State = mesos.TASK_FAILED.Enum()
+	status.Message = &message
+
+	e.updateStatus(status)
+
+	return err
 }
