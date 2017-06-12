@@ -56,7 +56,11 @@ Please note that Mesos native health checks are actually not available in Marath
 
 ### Design
 
-The design is really simple: each task has one checker, in charge to execute one check periodically and to send result to the executor core using a channel. The runtime is done like this:
+The design is really simple: each task has one checker, in charge to execute one check periodically and to send result to the executor core using a channel.
+
+![Executor health check design](https://raw.githubusercontent.com/Devatoria/go-mesos-executor/master/executor_design.png)
+
+The runtime is done like this:
 
 * wait for `delay` seconds before starting first check
 * check periodically with timeout
