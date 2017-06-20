@@ -98,9 +98,7 @@ Please note that `http.Get` can't be used here because runtime default transport
 
 ### Command health check
 
-* define which namespaces to enter (at least, mount namespace, + network namespace if in bridged mode)
-* prepare `nsenter` command to launch (wrapped in a shell command if needed)
-* run the command in defined namespaces
+* execute given command in the given container using its containerizer
 
 Please note that you can't get inside the mount namespace of a process in Go because of multithreading. In fact, even by locking the goroutine to a specific thread can't fix it. `setns` syscall must be called in a single-threaded context. You can, at least, call this syscall using Cgo (and constructor trick) to execute C code before running the Go runtime (and so, run this C code in a single-threaded context). But it doesn't allow to dynamically join a mount namespace while running. This is why I decided to use the [nsenter](http://man7.org/linux/man-pages/man1/nsenter.1.html) package that allows to execute a command into defined namespaces.
 
