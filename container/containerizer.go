@@ -9,13 +9,13 @@ import (
 
 // Containerizer represents a containerizing technology such as docker
 type Containerizer interface {
-	ContainerCreate(Info) (string, error)
-	ContainerGetGatewayIP(string) (net.IP, error)
-	ContainerGetPID(string) (int, error)
-	ContainerRemove(string) error
-	ContainerRun(string) error
-	ContainerStop(string) error
-	ContainerExec(context.Context, string, []string) chan error
+	ContainerCreate(info Info) (id string, err error)                               // Creates the container with the given info and returns its ID
+	ContainerGetGatewayIP(id string) (ip net.IP, err error)                         // Returns the gateway IP of the given container
+	ContainerGetPID(id string) (pid int, err error)                                 // Returns the main PID (1) of the given container
+	ContainerRemove(id string) error                                                // Removes the given container
+	ContainerRun(id string) error                                                   // Starts the given container
+	ContainerStop(id string) error                                                  // Stops the given container
+	ContainerExec(ctx context.Context, id string, cmd []string) (result chan error) // Executes the given command with the given context in the given container and returns result in a chan (asynchronous)
 }
 
 // Info represents container information such as image name, CPU/memory limits...
