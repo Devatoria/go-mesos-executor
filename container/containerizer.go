@@ -1,6 +1,7 @@
 package container
 
 import (
+	"context"
 	"net"
 
 	"github.com/mesos/mesos-go/api/v1/lib"
@@ -14,6 +15,7 @@ type Containerizer interface {
 	ContainerRemove(string) error
 	ContainerRun(string) error
 	ContainerStop(string) error
+	ContainerExec(context.Context, string, []string) chan error
 }
 
 // Info represents container information such as image name, CPU/memory limits...

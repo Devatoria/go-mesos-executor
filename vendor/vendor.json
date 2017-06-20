@@ -17,12 +17,6 @@
 			"revisionTime": "2017-06-04T04:17:05Z"
 		},
 		{
-			"checksumSHA1": "6MLDzNwmS//CTKv/vK3Jr6YT0dg=",
-			"path": "github.com/Devatoria/go-nsenter",
-			"revision": "0aa1e5f7748cf2484bfdd0faf61d445258c77acf",
-			"revisionTime": "2017-06-12T09:18:19Z"
-		},
-		{
 			"checksumSHA1": "AzjRkOQtVBTwIw4RJLTygFhJs3s=",
 			"origin": "github.com/docker/docker/vendor/github.com/Microsoft/go-winio",
 			"path": "github.com/Microsoft/go-winio",

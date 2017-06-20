@@ -9,11 +9,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Devatoria/go-mesos-executor/container"
 	"github.com/Devatoria/go-mesos-executor/logger"
 	"github.com/Devatoria/go-mesos-executor/namespace"
-	"github.com/spf13/viper"
 
-	"github.com/Devatoria/go-nsenter"
 	"github.com/mesos/mesos-go/api/v1/lib"
 	"go.uber.org/zap"
 )
@@ -21,23 +20,27 @@ import (
 // Checker is a health checker in charge to run check and say
 // it task is healthy or unhealthy
 type Checker struct {
-	ConsecutiveFailures uint32          // Consecutive failures count
-	Done                chan struct{}   // Done chan is triggered when the checker has finished its work (task is unhealthy)
-	Exited              chan struct{}   // Exited chan is triggered when the checker has freed its resources
-	GracePeriodExpired  *uint32         // Grace period boolean, using uint32 to be atomic
-	Healthy             chan bool       // Result chan
-	Pid                 int             // Pid in which we enter namespace
-	TaskInfo            *mesos.TaskInfo // The info of the checked task
-	Quit                chan struct{}   // Quit chan is triggered by the core to tell the checker to stop its work
+	ConsecutiveFailures uint32                  // Consecutive failures count
+	ContainerID         string                  // Container ID to check
+	Containerizer       container.Containerizer // Containerizer used by the executor
+	Done                chan struct{}           // Done chan is triggered when the checker has finished its work (task is unhealthy)
+	Exited              chan struct{}           // Exited chan is triggered when the checker has freed its resources
+	GracePeriodExpired  *uint32                 // Grace period boolean, using uint32 to be atomic
+	Healthy             chan bool               // Result chan
+	Pid                 int                     // Pid in which we enter namespace
+	TaskInfo            *mesos.TaskInfo         // The info of the checked task
+	Quit                chan struct{}           // Quit chan is triggered by the core to tell the checker to stop its work
 }
 
 // NewChecker instanciate a health checker with given health check
-func NewChecker(pid int, taskInfo *mesos.TaskInfo) *Checker {
+func NewChecker(pid int, c container.Containerizer, containerID string, taskInfo *mesos.TaskInfo) *Checker {
 	var gracePeriodExpired uint32
 	gracePeriodExpired = 0
 
 	return &Checker{
 		ConsecutiveFailures: 0,
+		ContainerID:         containerID,
+		Containerizer:       c,
 		Done:                make(chan struct{}),
 		Exited:              make(chan struct{}),
 		GracePeriodExpired:  &gracePeriodExpired,
@@ -243,55 +246,40 @@ func (c *Checker) checkTCP(result chan bool) {
 }
 
 // checkCommand enters the container mount namespace and
-// executes the given command using nsenter
+// executes the given command using the containerizer
 func (c *Checker) checkCommand(result chan bool) {
-	var err error
-	var args []string
-	var program string
+	var cmd []string
 	command := c.TaskInfo.GetHealthCheck().GetCommand()
 	// Must be wrapped into a shell process
 	if command.GetShell() {
-		// Wrap command into quotes
-		// (otherwise, params would not be passed to the wrapped command)
-		args = []string{"-c", fmt.Sprintf("\"%s\"", command.GetValue())}
-		program = "/bin/sh"
+		cmd = []string{"/bin/sh", "-c", command.GetValue()}
 	} else {
-		program = command.GetValue()
+		cmd = []string{command.GetValue()}
 	}
 
-	// Prepare config to enter required namespaces
-	// TODO: should we enter into container user namespace if it is actived in containerizer?
-	nsPath := fmt.Sprintf("%s/%d/ns", viper.GetString("proc_path"), c.Pid)
-	config := &nsenter.Config{
-		Mount:     true,
-		MountFile: fmt.Sprintf("%s/mnt", nsPath),
-		Target:    c.Pid,
-	}
-
-	// Enter network namespace only if we are running in bridge mode
-	if c.TaskInfo.GetContainer().GetDocker().GetNetwork() == mesos.ContainerInfo_DockerInfo_BRIDGE {
-		config.Net = true
-		config.NetFile = fmt.Sprintf("%s/net", nsPath)
-	}
-
+	// Prepare timeout context and all the stuff needed to call the containerizer
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(c.TaskInfo.GetHealthCheck().GetTimeoutSeconds())*time.Second)
-	stdout, stderr, err := config.ExecuteContext(ctx, program, args...)
-	cancel()
+	defer cancel()
+	execResult := c.Containerizer.ContainerExec(ctx, c.ContainerID, cmd)
+	select {
+	case err := <-execResult: // Done (with or without error)
+		if err != nil {
+			logger.GetInstance().Error("Error while executing healthcheck command",
+				zap.Error(err),
+			)
 
-	if err != nil {
-		logger.GetInstance().Error("Error while executing health check command",
-			zap.String("stderr", stderr),
-			zap.Error(err),
-		)
+			result <- false
 
+			return
+		}
+
+		result <- true
+	case <-ctx.Done(): // Timed out
+		logger.GetInstance().Error("Error while executing health check command: timed out")
 		result <- false
 
 		return
 	}
-
-	logger.GetInstance().Debug("Health check has been done",
-		zap.String("stdout", stdout),
-	)
 
 	result <- true
 }

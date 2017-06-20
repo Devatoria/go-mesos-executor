@@ -26,3 +26,6 @@ docker: build
 clean:
 	docker-compose stop -t 0
 	docker-compose rm -f
+
+.PHONY: redocker
+redocker: clean docker

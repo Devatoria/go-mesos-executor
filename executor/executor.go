@@ -270,7 +270,7 @@ func (e *Executor) handleLaunch(ev *executor.Event) error {
 			return e.throwError(task.GetTaskID(), err)
 		}
 		e.HealthCheckersMutex.Lock()
-		e.HealthCheckers[task.GetTaskID()] = healthcheck.NewChecker(pid, &task)
+		e.HealthCheckers[task.GetTaskID()] = healthcheck.NewChecker(pid, e.Containerizer, containerID, &task)
 		e.HealthCheckersMutex.Unlock()
 		go e.healthCheck(task.GetTaskID())
 	}

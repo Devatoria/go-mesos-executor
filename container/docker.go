@@ -1,6 +1,8 @@
 package container
 
 import (
+	"bytes"
+	"context"
 	"fmt"
 	"net"
 	"strconv"
@@ -167,4 +169,32 @@ func (c *DockerContainerizer) ContainerGetGatewayIP(id string) (net.IP, error) {
 	}
 
 	return ip, nil
+}
+
+// ContainerExec executes the given command in the given container with the given context
+// It does it asynchronously, and returns a channel with an error (or nil if ok)
+func (c *DockerContainerizer) ContainerExec(ctx context.Context, id string, cmd []string) chan error {
+	result := make(chan error)
+	go func(r chan error) {
+		// Create the exec instance
+		ex, err := c.Client.CreateExec(docker.CreateExecOptions{
+			AttachStderr: true,
+			Cmd:          cmd,
+			Container:    id,
+		})
+		if err != nil {
+			r <- err
+		}
+
+		// Start the instance in a goroutine in order to be async
+		var stderr bytes.Buffer
+		err = c.Client.StartExec(ex.ID, docker.StartExecOptions{
+			ErrorStream: &stderr,
+			Context:     ctx,
+		})
+
+		r <- err
+	}(result)
+
+	return result
 }
