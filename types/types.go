@@ -1,6 +1,7 @@
 package types
 
 import (
+	"context"
 	"net"
 
 	"github.com/Devatoria/go-mesos-executor/container"
@@ -51,4 +52,14 @@ func (f *FakeContainerizer) ContainerGetPID(id string) (int, error) {
 // ContainerGetGatewayIP returns a fake IP
 func (f *FakeContainerizer) ContainerGetGatewayIP(id string) (net.IP, error) {
 	return net.ParseIP("127.0.0.1"), nil
+}
+
+// ContainerExec returns a chan with a goroutine injecting a nil error
+func (f *FakeContainerizer) ContainerExec(ctx context.Context, id string, cmd []string) (result chan error) {
+	ch := make(chan error)
+	go func() {
+		ch <- nil
+	}()
+
+	return ch
 }

@@ -5,11 +5,13 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
+
+	"go.uber.org/zap"
 )
 
 type LoggerTestSuite struct {
 	suite.Suite
-	logger *Logger
+	logger *zap.Logger
 }
 
 func (s *LoggerTestSuite) SetupTest() {
