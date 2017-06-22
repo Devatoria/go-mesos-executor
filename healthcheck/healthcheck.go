@@ -25,7 +25,6 @@ type Checker struct {
 	Containerizer       container.Containerizer // Containerizer used by the executor
 	Done                chan struct{}           // Done chan is triggered when the checker has finished its work (task is unhealthy)
 	Exited              chan struct{}           // Exited chan is triggered when the checker has freed its resources
-	GracePeriodExpired  *uint32                 // Grace period boolean, using uint32 to be atomic
 	Healthy             chan bool               // Result chan
 	Pid                 int                     // Pid in which we enter namespace
 	TaskInfo            *mesos.TaskInfo         // The info of the checked task
@@ -34,16 +33,12 @@ type Checker struct {
 
 // NewChecker instanciate a health checker with given health check
 func NewChecker(pid int, c container.Containerizer, containerID string, taskInfo *mesos.TaskInfo) *Checker {
-	var gracePeriodExpired uint32
-	gracePeriodExpired = 0
-
 	return &Checker{
 		ConsecutiveFailures: 0,
 		ContainerID:         containerID,
 		Containerizer:       c,
 		Done:                make(chan struct{}),
 		Exited:              make(chan struct{}),
-		GracePeriodExpired:  &gracePeriodExpired,
 		Healthy:             make(chan bool),
 		Pid:                 pid,
 		TaskInfo:            taskInfo,
@@ -61,13 +56,14 @@ func (c *Checker) Run() {
 	time.Sleep(time.Duration(c.TaskInfo.GetHealthCheck().GetDelaySeconds()) * time.Second)
 
 	// Grace period timer
+	gracePeriodExpired := uint32(0)
 	gracePeriodTimer := time.NewTimer(time.Duration(c.TaskInfo.GetHealthCheck().GetGracePeriodSeconds()) * time.Second)
 	defer gracePeriodTimer.Stop()
 
 	// Wait for grace period to end (in parallel with checks)
 	go func() {
 		<-gracePeriodTimer.C
-		atomic.StoreUint32(c.GracePeriodExpired, 1)
+		atomic.StoreUint32(&gracePeriodExpired, 1)
 
 		logger.GetInstance().Debug("Grace period expired")
 	}()
@@ -110,11 +106,11 @@ func (c *Checker) Run() {
 				c.ConsecutiveFailures = 0
 
 				// Manually expire grace period if check is healthy
-				atomic.StoreUint32(c.GracePeriodExpired, 1)
+				atomic.StoreUint32(&gracePeriodExpired, 1)
 			} else {
 				// Do not take care about consecutive failures if we are in the grace period
 				// We'll just change the task status but do not increase count
-				if atomic.LoadUint32(c.GracePeriodExpired) == 1 {
+				if atomic.LoadUint32(&gracePeriodExpired) == 1 {
 					c.ConsecutiveFailures++
 
 					// If we reached the max consecutive failures, we stop the checker,
@@ -264,7 +260,7 @@ func (c *Checker) checkCommand(result chan bool) {
 	select {
 	case err := <-execResult: // Done (with or without error)
 		if err != nil {
-			logger.GetInstance().Error("Error while executing healthcheck command",
+			logger.GetInstance().Error("Error while executing health check command",
 				zap.Error(err),
 			)
 
@@ -272,8 +268,6 @@ func (c *Checker) checkCommand(result chan bool) {
 
 			return
 		}
-
-		result <- true
 	case <-ctx.Done(): // Timed out
 		logger.GetInstance().Error("Error while executing health check command: timed out")
 		result <- false
