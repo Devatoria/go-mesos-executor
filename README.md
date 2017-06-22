@@ -141,6 +141,9 @@ You can run tests using `make test`. Tests are using `testify` package to create
   * Forced network mode (bridged)
 * Health checks: please take a look at health checks section
   * Add HTTPS support (not tested)
+  * Implement missing features
+    * Environment, arguments and user for command checks
+    * Statuses for HTTP checks
 * Containerizer
   * libcontainer (runc)
 
