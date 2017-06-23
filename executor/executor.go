@@ -496,7 +496,7 @@ func (e *Executor) healthCheck(taskID mesos.TaskID) {
 			status.Healthy = &healthy
 			status.State = mesos.TASK_RUNNING.Enum()
 			e.updateStatus(status)
-			// Health checker has ended, we must kill the associated task
+		// Health checker has ended, we must kill the associated task
 		case <-hc.Done:
 			logger.GetInstance().Info("Health checker has ended, task is going to be killed")
 
@@ -507,6 +507,7 @@ func (e *Executor) healthCheck(taskID mesos.TaskID) {
 			})
 
 			return
+		// Health checker has been stopped by the executor
 		case <-hc.Exited:
 			logger.GetInstance().Info("Health checker has been removed, freeing...")
 

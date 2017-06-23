@@ -5,11 +5,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"testing"
 
 	"github.com/Devatoria/go-mesos-executor/container"
+	"github.com/Devatoria/go-mesos-executor/healthcheck"
 	"github.com/Devatoria/go-mesos-executor/hook"
 	"github.com/Devatoria/go-mesos-executor/types"
+	"github.com/bouk/monkey"
 
 	"github.com/mesos/mesos-go/api/v1/lib"
 	"github.com/mesos/mesos-go/api/v1/lib/executor"
@@ -437,6 +440,37 @@ func (s *ExecutorTestSuite) TestGetCPUSharesLimit() {
 	s.taskInfo.Resources = []mesos.Resource{}
 	_, err = getCPUSharesLimit(s.taskInfo)
 	assert.NotNil(s.T(), err)
+}
+
+// Check that:
+// - receive healthy states throws a status update
+// - receive done from checker kills the associated task
+func (s *ExecutorTestSuite) TestHealthCheck() {
+	defer monkey.UnpatchAll()
+
+	// Create fake checker for task
+	checker := healthcheck.NewChecker(0, nil, "", nil)
+	taskID := mesos.TaskID{
+		Value: "fakeTaskID",
+	}
+	s.executor.HealthCheckers[taskID] = checker
+
+	// Health state update should update task status
+	monkey.PatchInstanceMethod(reflect.TypeOf(checker), "Run", func(c *healthcheck.Checker) {
+		c.Healthy <- true      // Simulate health state update from checker
+		c.Exited <- struct{}{} // Simulate checker exit (in order to stop loop)
+	})
+	s.executor.healthCheck(taskID)
+	update := pullFirstUpdate(s.executor.UnackedUpdates)
+	assert.Equal(s.T(), true, *update.Status.Healthy)
+	assert.Equal(s.T(), *mesos.TASK_RUNNING.Enum(), *update.Status.State)
+
+	// A done from the checker should kill the task
+	monkey.PatchInstanceMethod(reflect.TypeOf(checker), "Run", func(c *healthcheck.Checker) {
+		c.Done <- struct{}{} // Simulate checker stop signal
+	})
+	s.executor.healthCheck(taskID)
+	assert.Len(s.T(), s.executor.UnackedUpdates, 1) // Should contain an update (KILLED or FAILED)
 }
 
 // Launch test suite
