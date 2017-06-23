@@ -2,6 +2,7 @@ package hook
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/Devatoria/go-mesos-executor/container"
 	"github.com/Devatoria/go-mesos-executor/logger"
@@ -26,6 +27,27 @@ type Manager struct {
 	PostStopHooks  []*Hook
 }
 
+// sorter is a sort interface implementation in order to sort hooks
+type sorter struct {
+	hooks []*Hook
+	by    func(h1, h2 *Hook) bool
+}
+
+// Len is part of the sort interface
+func (s *sorter) Len() int {
+	return len(s.hooks)
+}
+
+// Less is part of the sort interface
+func (s *sorter) Less(i, j int) bool {
+	return s.by(s.hooks[i], s.hooks[j])
+}
+
+// Swap is part of the sort interface
+func (s *sorter) Swap(i, j int) {
+	s.hooks[i], s.hooks[j] = s.hooks[j], s.hooks[i]
+}
+
 // NewManager returns an empty HookManager (with no hooks)
 func NewManager(hooks []string) *Manager {
 	enabledHooks := make(map[string]struct{})
@@ -36,6 +58,28 @@ func NewManager(hooks []string) *Manager {
 	return &Manager{
 		EnabledHooks: enabledHooks,
 	}
+}
+
+// sort sorts all slices using the given by function
+func (m *Manager) sort(by func(h1, h2 *Hook) bool) {
+	preCreateSorter := &sorter{m.PreCreateHooks, by}
+	preRunSorter := &sorter{m.PreRunHooks, by}
+	postRunSorter := &sorter{m.PostRunHooks, by}
+	preStopSorter := &sorter{m.PreStopHooks, by}
+	postStopSorter := &sorter{m.PostStopHooks, by}
+
+	sort.Sort(preCreateSorter)
+	sort.Sort(preRunSorter)
+	sort.Sort(postRunSorter)
+	sort.Sort(preStopSorter)
+	sort.Sort(postStopSorter)
+}
+
+// sortByPriority sorts all slices by descending priority
+func (m *Manager) sortByPriority() {
+	m.sort(func(h1, h2 *Hook) bool {
+		return !(h1.Priority < h2.Priority)
+	})
 }
 
 // RegisterHooks registers a list of hooks on the given "when" (pre-create, ...)
@@ -63,6 +107,9 @@ func (m *Manager) RegisterHooks(when string, hooks ...*Hook) error {
 			return fmt.Errorf("Unable to run a hook on %s", when)
 		}
 	}
+
+	// Re-sort slices by priority
+	m.sortByPriority()
 
 	return nil
 }

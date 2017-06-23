@@ -17,10 +17,11 @@ type HookManagerTestSuite struct {
 	disabledHook *Hook
 	manager      *Manager
 	hook         *Hook
+	priorityHook *Hook
 }
 
 func (s *HookManagerTestSuite) SetupTest() {
-	s.manager = NewManager([]string{"sampleHook", "errorHook"})
+	s.manager = NewManager([]string{"sampleHook", "errorHook", "priorityHook"})
 	s.hook = &Hook{
 		Name:     "sampleHook",
 		Priority: 0,
@@ -38,6 +39,13 @@ func (s *HookManagerTestSuite) SetupTest() {
 	s.disabledHook = &Hook{
 		Name:     "disabledHook",
 		Priority: 0,
+		Execute: func(c container.Containerizer, info *types.ContainerTaskInfo) error {
+			return nil
+		},
+	}
+	s.priorityHook = &Hook{
+		Name:     "priorityHook",
+		Priority: 100,
 		Execute: func(c container.Containerizer, info *types.ContainerTaskInfo) error {
 			return nil
 		},
@@ -86,6 +94,10 @@ func (s *HookManagerTestSuite) TestRegister() {
 	// A disabled hook should not be added into a run slice
 	assert.Nil(s.T(), s.manager.RegisterHooks("pre-create", s.disabledHook))
 	assert.NotContains(s.T(), s.manager.PreCreateHooks, s.disabledHook)
+
+	// A prioritized hook should be placed before all the others in order to be ran before
+	assert.Nil(s.T(), s.manager.RegisterHooks("pre-create", s.priorityHook))
+	assert.Equal(s.T(), []*Hook{s.priorityHook, s.hook}, s.manager.PreCreateHooks)
 }
 
 // Check that run fuction returns nil if hook executed well, or an error if not
