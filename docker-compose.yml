@@ -10,8 +10,8 @@ services:
       MESOS_ZK: "zk://localhost:2181/mesos"
       MESOS_WORK_DIR: "/var/tmp/mesos"
       MESOS_LOG_DIR: "/var/log/mesos"
-      MESOS_IP: 167.114.231.229
-      MESOS_HOSTNAME: 167.114.231.229
+      MESOS_IP: 127.0.0.1
+      MESOS_HOSTNAME: "localhost"
     depends_on:
       - zookeeper
   mesos_agent:
@@ -23,7 +23,6 @@ services:
       - /var/run/docker.pid:/var/run/docker.pid
       - /cgroup:/cgroup
       - /sys:/sys
-      - /usr/bin/docker:/usr/bin/docker
       - ./go-mesos-executor:/usr/libexec/mesos/mesos-docker-executor
       - ./config.yaml:/etc/mesos-executor/config.yaml
       - /proc:/mnt/proc
