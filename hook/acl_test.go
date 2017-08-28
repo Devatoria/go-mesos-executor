@@ -17,11 +17,12 @@ import (
 
 type AclHookTestSuite struct {
 	suite.Suite
-	c               *types.FakeContainerizer
-	hook            Hook
-	hostNamespace   netns.NsHandle
-	iptablesDriver  *iptables.IPTables
-	randomNamespace netns.NsHandle
+	c                 *types.FakeContainerizer
+	hook              Hook
+	hostNamespace     netns.NsHandle
+	isolatedNamespace netns.NsHandle
+	iptablesDriver    *iptables.IPTables
+	randomNamespace   netns.NsHandle
 }
 
 func (s *AclHookTestSuite) SetupTest() {
@@ -36,7 +37,10 @@ func (s *AclHookTestSuite) SetupTest() {
 	ns, _ := netns.New() // Create a new namespace
 	s.randomNamespace = ns
 
-	netns.Set(s.hostNamespace) // Ensure we are in the host namespace
+	isolated, _ := netns.New() // Create an isolated namespace for the tests
+	s.isolatedNamespace = isolated
+
+	netns.Set(s.isolatedNamespace) // Ensure we are in the isolated namespace
 
 	// Patch GetFromPath and Get functions to return respectively the newly created
 	// namespace and the host namespace.
@@ -44,7 +48,7 @@ func (s *AclHookTestSuite) SetupTest() {
 		return s.randomNamespace, nil
 	})
 	monkey.Patch(netns.Get, func() (netns.NsHandle, error) {
-		return s.hostNamespace, nil
+		return s.isolatedNamespace, nil
 	})
 	monkey.PatchInstanceMethod(reflect.TypeOf(&ns), "Close", func(_ *netns.NsHandle) error {
 		return nil
@@ -57,6 +61,13 @@ func (s *AclHookTestSuite) SetupTest() {
 func (s *AclHookTestSuite) TearDownTest() {
 	// Unpatch method after each test to allow the SetupTest to re-run as expected
 	monkey.UnpatchAll()
+
+	// Return to the real host namespace
+	// and close fd
+	netns.Set(s.hostNamespace)
+	s.randomNamespace.Close()
+	s.isolatedNamespace.Close()
+	s.hostNamespace.Close()
 
 	runtime.UnlockOSThread() // Unlock thread now that we've finished
 }
@@ -77,6 +88,7 @@ func (s *AclHookTestSuite) TestACLHookExecute() {
 	assert.Equal(s.T(), []string{
 		"-P INPUT ACCEPT", // Default policy
 	}, rules)
+	netns.Set(s.isolatedNamespace)
 
 	// Injection should be skipped if label is not present
 	info.TaskInfo.Container = &mesos.ContainerInfo{
@@ -94,7 +106,7 @@ func (s *AclHookTestSuite) TestACLHookExecute() {
 		"-A INPUT -j DROP",                                        // Default DROP rule
 	}, rules)
 	s.iptablesDriver.ClearChain("filter", "INPUT")
-	netns.Set(s.hostNamespace)
+	netns.Set(s.isolatedNamespace)
 
 	// Injection should be skipped if label has no value
 	info.TaskInfo.Labels = &mesos.Labels{
@@ -114,7 +126,7 @@ func (s *AclHookTestSuite) TestACLHookExecute() {
 		"-A INPUT -j DROP",                                        // Default DROP rule
 	}, rules)
 	s.iptablesDriver.ClearChain("filter", "INPUT")
-	netns.Set(s.hostNamespace)
+	netns.Set(s.isolatedNamespace)
 
 	// Injection should return an error if one of the given IP is invalid
 	labelValue := "8.8.8.8,invalidIP"
@@ -125,7 +137,7 @@ func (s *AclHookTestSuite) TestACLHookExecute() {
 	assert.Equal(s.T(), []string{
 		"-P INPUT ACCEPT", // Default policy
 	}, rules)
-	netns.Set(s.hostNamespace)
+	netns.Set(s.isolatedNamespace)
 
 	// Injection should be okay, but no rules should have been
 	// added because no ports have been defined
@@ -140,7 +152,7 @@ func (s *AclHookTestSuite) TestACLHookExecute() {
 		"-A INPUT -j DROP",                                        // Default DROP rule
 	}, rules)
 	s.iptablesDriver.ClearChain("filter", "INPUT")
-	netns.Set(s.hostNamespace)
+	netns.Set(s.isolatedNamespace)
 
 	// Injection should be okay
 	protocol := "tcp"
@@ -151,7 +163,6 @@ func (s *AclHookTestSuite) TestACLHookExecute() {
 		},
 	}
 	s.iptablesDriver.ClearChain("filter", "INPUT")
-	netns.Set(s.hostNamespace)
 	assert.Nil(s.T(), s.hook.Execute(s.c, info))
 	netns.Set(s.randomNamespace)
 	rules, _ = s.iptablesDriver.List("filter", "INPUT")
@@ -163,13 +174,14 @@ func (s *AclHookTestSuite) TestACLHookExecute() {
 		"-A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT",    // Default related/established traffic allow rule
 		"-A INPUT -j DROP",                                           // Default DROP rule
 	}, rules)
+	netns.Set(s.isolatedNamespace)
 }
 
 // Check that:
 // - an error it thrown if current and container namespace are the same
 // - given rules are well injected into given namespace
 func (s *AclHookTestSuite) TestInjectRuleIntoNamespace() {
-	assert.Error(s.T(), injectRuleIntoNamespace(s.hostNamespace, ""))                      // Should throw an error (same unique ID)
+	assert.Error(s.T(), injectRuleIntoNamespace(s.isolatedNamespace, ""))                  // Should throw an error (same unique ID)
 	assert.Error(s.T(), injectRuleIntoNamespace(s.randomNamespace, ""))                    // Try to inject a bad rule
 	assert.Nil(s.T(), injectRuleIntoNamespace(s.randomNamespace, "-s 10.0.0.1 -j ACCEPT")) // Try to inject a good rule
 
