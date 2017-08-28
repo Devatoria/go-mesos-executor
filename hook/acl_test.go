@@ -1,6 +1,8 @@
 package hook
 
 import (
+	"reflect"
+	"runtime"
 	"testing"
 
 	"github.com/Devatoria/go-mesos-executor/types"
@@ -23,6 +25,8 @@ type AclHookTestSuite struct {
 }
 
 func (s *AclHookTestSuite) SetupTest() {
+	runtime.LockOSThread() // Lock thread to avoid namespace switching while testing
+
 	s.c = types.NewFakeContainerizer() // Generate fake containerizer
 	s.hook = ACLHook                   // Retrieve hook
 
@@ -42,6 +46,9 @@ func (s *AclHookTestSuite) SetupTest() {
 	monkey.Patch(netns.Get, func() (netns.NsHandle, error) {
 		return s.hostNamespace, nil
 	})
+	monkey.PatchInstanceMethod(reflect.TypeOf(&ns), "Close", func(_ *netns.NsHandle) error {
+		return nil
+	})
 
 	driver, _ := iptables.New() // Get iptables driver
 	s.iptablesDriver = driver
@@ -49,8 +56,9 @@ func (s *AclHookTestSuite) SetupTest() {
 
 func (s *AclHookTestSuite) TearDownTest() {
 	// Unpatch method after each test to allow the SetupTest to re-run as expected
-	monkey.Unpatch(netns.GetFromPath)
-	monkey.Unpatch(netns.Get)
+	monkey.UnpatchAll()
+
+	runtime.UnlockOSThread() // Unlock thread now that we've finished
 }
 
 // Check that:
@@ -61,9 +69,32 @@ func (s *AclHookTestSuite) TearDownTest() {
 // - an error if thrown if network namespace can't be retrieved
 // - all rules are well injected into network namespace
 func (s *AclHookTestSuite) TestACLHookExecute() {
-	// Injection should be skipped if label is not present
+	// Injection should not be executed if the network is not in bridge mode
 	info := &types.ContainerTaskInfo{}
 	assert.Nil(s.T(), s.hook.Execute(s.c, info))
+	netns.Set(s.randomNamespace)
+	rules, _ := s.iptablesDriver.List("filter", "INPUT")
+	assert.Equal(s.T(), []string{
+		"-P INPUT ACCEPT", // Default policy
+	}, rules)
+
+	// Injection should be skipped if label is not present
+	info.TaskInfo.Container = &mesos.ContainerInfo{
+		Docker: &mesos.ContainerInfo_DockerInfo{
+			Network: mesos.ContainerInfo_DockerInfo_BRIDGE.Enum(),
+		},
+	}
+	assert.Nil(s.T(), s.hook.Execute(s.c, info))
+	netns.Set(s.randomNamespace)
+	rules, _ = s.iptablesDriver.List("filter", "INPUT")
+	assert.Equal(s.T(), []string{
+		"-P INPUT ACCEPT",                                         // Default policy
+		"-A INPUT -i lo -j ACCEPT",                                // Default lo allow rule
+		"-A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT", // Default related/established traffic allow rule
+		"-A INPUT -j DROP",                                        // Default DROP rule
+	}, rules)
+	s.iptablesDriver.ClearChain("filter", "INPUT")
+	netns.Set(s.hostNamespace)
 
 	// Injection should be skipped if label has no value
 	info.TaskInfo.Labels = &mesos.Labels{
@@ -74,34 +105,63 @@ func (s *AclHookTestSuite) TestACLHookExecute() {
 		},
 	}
 	assert.Nil(s.T(), s.hook.Execute(s.c, info))
-
-	// Injection should return an error if the network is not set to bridged
-	labelValue := "8.8.8.8"
-	info.TaskInfo.Labels.Labels[0].Value = &labelValue
-	assert.Error(s.T(), s.hook.Execute(s.c, info))
+	netns.Set(s.randomNamespace)
+	rules, _ = s.iptablesDriver.List("filter", "INPUT")
+	assert.Equal(s.T(), []string{
+		"-P INPUT ACCEPT",                                         // Default policy
+		"-A INPUT -i lo -j ACCEPT",                                // Default lo allow rule
+		"-A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT", // Default related/established traffic allow rule
+		"-A INPUT -j DROP",                                        // Default DROP rule
+	}, rules)
+	s.iptablesDriver.ClearChain("filter", "INPUT")
+	netns.Set(s.hostNamespace)
 
 	// Injection should return an error if one of the given IP is invalid
-	labelValue = "8.8.8.8,invalidIP"
-	info.TaskInfo.Container = &mesos.ContainerInfo{
-		Docker: &mesos.ContainerInfo_DockerInfo{
-			Network: mesos.ContainerInfo_DockerInfo_BRIDGE.Enum(),
-		},
-	}
+	labelValue := "8.8.8.8,invalidIP"
+	info.TaskInfo.Labels.Labels[0].Value = &labelValue
 	assert.Error(s.T(), s.hook.Execute(s.c, info))
+	netns.Set(s.randomNamespace)
+	rules, _ = s.iptablesDriver.List("filter", "INPUT")
+	assert.Equal(s.T(), []string{
+		"-P INPUT ACCEPT", // Default policy
+	}, rules)
+	netns.Set(s.hostNamespace)
 
-	// Injection should be okay
+	// Injection should be okay, but no rules should have been
+	// added because no ports have been defined
 	labelValue = "8.8.8.8,10.0.0.0/24"
 	assert.Nil(s.T(), s.hook.Execute(s.c, info))
-
-	// Check that injected rules are okay
 	netns.Set(s.randomNamespace)
-	rules, _ := s.iptablesDriver.List("filter", "INPUT")
+	rules, _ = s.iptablesDriver.List("filter", "INPUT")
 	assert.Equal(s.T(), []string{
-		"-P INPUT ACCEPT",                    // Default policy
-		"-A INPUT -s 8.8.8.8/32 -j ACCEPT",   // First injected IP
-		"-A INPUT -s 10.0.0.0/24 -j ACCEPT",  // Second injected IP
-		"-A INPUT -s 127.0.0.1/32 -j ACCEPT", // Bridge IP
-		"-A INPUT -j DROP",                   // Default DROP rule
+		"-P INPUT ACCEPT",                                         // Default policy
+		"-A INPUT -i lo -j ACCEPT",                                // Default lo allow rule
+		"-A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT", // Default related/established traffic allow rule
+		"-A INPUT -j DROP",                                        // Default DROP rule
+	}, rules)
+	s.iptablesDriver.ClearChain("filter", "INPUT")
+	netns.Set(s.hostNamespace)
+
+	// Injection should be okay
+	protocol := "tcp"
+	info.TaskInfo.Container.Docker.PortMappings = []mesos.ContainerInfo_DockerInfo_PortMapping{
+		mesos.ContainerInfo_DockerInfo_PortMapping{
+			ContainerPort: 80,
+			Protocol:      &protocol,
+		},
+	}
+	s.iptablesDriver.ClearChain("filter", "INPUT")
+	netns.Set(s.hostNamespace)
+	assert.Nil(s.T(), s.hook.Execute(s.c, info))
+	netns.Set(s.randomNamespace)
+	rules, _ = s.iptablesDriver.List("filter", "INPUT")
+	assert.Equal(s.T(), []string{
+		"-P INPUT ACCEPT",                                            // Default policy
+		"-A INPUT -s 8.8.8.8/32 -p tcp -m tcp --dport 80 -j ACCEPT",  // First user-defined rule
+		"-A INPUT -s 10.0.0.0/24 -p tcp -m tcp --dport 80 -j ACCEPT", // Second user-defined rule
+		"-A INPUT -i lo -j ACCEPT",                                   // Default lo allow rule
+		"-A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT",    // Default related/established traffic allow rule
+		"-A INPUT -j DROP",                                           // Default DROP rule
 	}, rules)
 }
 

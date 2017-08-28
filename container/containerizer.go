@@ -2,7 +2,6 @@ package container
 
 import (
 	"context"
-	"net"
 
 	"github.com/mesos/mesos-go/api/v1/lib"
 )
@@ -10,7 +9,6 @@ import (
 // Containerizer represents a containerizing technology such as docker
 type Containerizer interface {
 	ContainerCreate(info Info) (id string, err error)                               // Creates the container with the given info and returns its ID
-	ContainerGetGatewayIP(id string) (ip net.IP, err error)                         // Returns the gateway IP of the given container
 	ContainerGetPID(id string) (pid int, err error)                                 // Returns the main PID (1) of the given container
 	ContainerRemove(id string) error                                                // Removes the given container
 	ContainerRun(id string) error                                                   // Starts the given container

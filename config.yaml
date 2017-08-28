@@ -3,3 +3,6 @@ hooks: # Enabled hooks
   - acl
   - removeContainer
 proc_path: /mnt/proc # Mount path of host proc folder
+acl:
+  default_allowed_cidr: # Set of default IP (with CIDR) to allow
+    - 172.17.0.1/32 # You should add host IP here for framework-based health checks

@@ -37,10 +37,23 @@ This hook removes the stopped container after shutting down (or task kill) in or
 
 This hook injects iptables rules in the container network namespace. To use it, just pass a list of IP, comma separated, with or without CIDR, to the `EXECUTOR_ALLOWED_IP` label. For example: `EXECUTOR_ALLOWED_IP: 8.8.8.8,10.0.0.0/24`.
 
-When at least one IP is injected, the hook appends two extra rules at the very end:
+When at least one IP is injected, the hook appends some extra rules at the very end:
 
-* one to allow health checks (would be removed when executor HTTP(S)/TCP health checks will be supported) from container gateway
+* one to allow traffic on the loopback interface
+* one to allow established and related traffic on all interfaces
 * one to drop all the traffic (maybe we should just change the default policy instead of adding an extra rule for this)
+
+You can add extra rules for all containers by adding this section to the configuration file:
+
+```yaml
+acl:
+  default_allowed_cidr:
+    - 172.17.0.1/32
+```
+
+Those rules will be injected **after** the label defined rules and **before** the default rules.
+
+Please note that you are in charge of allowing needed sources for health checks. If you are using the executor-based health checks (as described below), no extra rule is needed. If you are using framework-based health checks, you will have to allow either the bridge IP or the host IP (the one which is doing the health checks), depending on your container network configuration.
 
 ## Health checks
 
@@ -145,5 +158,6 @@ You can run tests using `make test`. Tests are using `testify` package to create
     * Statuses for HTTP checks
 * Containerizer
   * libcontainer (runc)
+* Remove nsenter from deps (no more used)
 
 The executor actually does not handle custom parameters sent to Docker CLI. This has to be done with a matching enum (I think) and it is actually a little bit boring to do this :)

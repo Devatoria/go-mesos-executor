@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"net"
 	"strconv"
 	"strings"
 
@@ -154,21 +153,6 @@ func (c *DockerContainerizer) ContainerGetPID(id string) (int, error) {
 	}
 
 	return con.State.Pid, nil
-}
-
-// ContainerGetGatewayIP returns the container gateway IP
-func (c *DockerContainerizer) ContainerGetGatewayIP(id string) (net.IP, error) {
-	con, err := c.Client.InspectContainer(id)
-	if err != nil {
-		return nil, nil
-	}
-
-	ip := net.ParseIP(con.NetworkSettings.Gateway)
-	if ip == nil {
-		return nil, fmt.Errorf("Invalid gateway IP: %s", con.NetworkSettings.Gateway)
-	}
-
-	return ip, nil
 }
 
 // ContainerExec executes the given command in the given container with the given context

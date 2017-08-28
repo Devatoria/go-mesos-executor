@@ -9,6 +9,7 @@ import (
 	"github.com/Devatoria/go-mesos-executor/container"
 	"github.com/Devatoria/go-mesos-executor/logger"
 	"github.com/Devatoria/go-mesos-executor/types"
+	"github.com/spf13/viper"
 
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/mesos/mesos-go/api/v1/lib"
@@ -17,8 +18,7 @@ import (
 )
 
 const (
-	aclHookLabel    = "EXECUTOR_ALLOWED_IP"
-	aclHookProcPath = "/mnt/proc"
+	aclHookLabel = "EXECUTOR_ALLOWED_IP"
 )
 
 // ACLHook injects iptables rules into container namespace on post-run
@@ -28,6 +28,30 @@ var ACLHook = Hook{
 	Name:     "acl",
 	Priority: 0,
 	Execute: func(c container.Containerizer, info *types.ContainerTaskInfo) error {
+		// Do not execute the hook if we are not on bridged network
+		if info.TaskInfo.GetContainer().GetDocker().GetNetwork() != mesos.ContainerInfo_DockerInfo_BRIDGE {
+			logger.GetInstance().Warn("ACL hook can't inject iptables rules if network mode is not bridged")
+
+			return nil
+		}
+
+		// Get task container ports
+		portMappings := info.TaskInfo.GetContainer().GetDocker().GetPortMappings()
+
+		// Get container PID (to enter namespace)
+		pid, err := c.ContainerGetPID(info.ContainerID)
+		if err != nil {
+			return fmt.Errorf("Unable to get the container PID: %v", err)
+		}
+
+		// Get container namespace
+		aclHookProcPath := viper.GetString("proc_path")
+		ns, err := netns.GetFromPath(fmt.Sprintf("%s/%d/ns/net", aclHookProcPath, pid))
+		if err != nil {
+			return err
+		}
+		defer ns.Close()
+
 		for _, label := range info.TaskInfo.GetLabels().GetLabels() {
 			// Ignore labels we do not care about
 			if label.GetKey() != aclHookLabel {
@@ -37,11 +61,6 @@ var ACLHook = Hook{
 			// Stop here if label is set but null
 			if label.GetValue() == "" {
 				break
-			}
-
-			// Do not execute the hook if we are not on bridged network
-			if info.TaskInfo.GetContainer().GetDocker().GetNetwork() != mesos.ContainerInfo_DockerInfo_BRIDGE {
-				return fmt.Errorf("ACL hook can't inject iptables rules if network mode is not bridged")
 			}
 
 			// Expected label value is a list of IP (with or without CIDR): 1.1.1.0/24,2.3.4.5,...
@@ -68,42 +87,41 @@ var ACLHook = Hook{
 				zap.Reflect("allowed", parsedIPs),
 			)
 
-			// Get container PID (to enter namespace)
-			pid, err := c.ContainerGetPID(info.ContainerID)
-			if err != nil {
-				return fmt.Errorf("Unable to get the container PID: %v", err)
-			}
-
-			// Get container namespace
-			ns, err := netns.GetFromPath(fmt.Sprintf("%s/%d/ns/net", aclHookProcPath, pid))
-			if err != nil {
-				return err
-			}
-			defer ns.Close()
-
 			// Inject rules
 			for _, ip := range parsedIPs {
-				err = injectRuleIntoNamespace(ns, fmt.Sprintf("-s %s -j ACCEPT", ip))
-				if err != nil {
-					return fmt.Errorf("Error while injecting iptables rule: %v", err)
+				for _, port := range portMappings {
+					err = injectRuleIntoNamespace(ns, fmt.Sprintf("-s %s -p %s --dport %d -j ACCEPT", ip, port.GetProtocol(), port.GetContainerPort()))
+					if err != nil {
+						return fmt.Errorf("Error while injecting iptables rule: %v", err)
+					}
 				}
 			}
-
-			// Inject base rules (allow gateway for health checks and drop everything)
-			gateway, err := c.ContainerGetGatewayIP(info.ContainerID)
-			if err != nil {
-				return fmt.Errorf("Unable to get container gatewa IP: %v", err)
-			}
-
-			_ = injectRuleIntoNamespace(ns, fmt.Sprintf("-s %s -j ACCEPT", gateway.String()))
-			_ = injectRuleIntoNamespace(ns, "-j DROP")
 		}
+
+		// Search for default allowed CIDR (always allowed, even if no label is given)
+		defaultAllowedCIDR := viper.GetStringSlice("acl.default_allowed_cidr")
+		if len(defaultAllowedCIDR) > 0 {
+			for _, cidr := range defaultAllowedCIDR {
+				for _, port := range portMappings {
+					err := injectRuleIntoNamespace(ns, fmt.Sprintf("-s %s -p %s --dport %d -j ACCEPT", cidr, port.GetProtocol(), port.GetContainerPort()))
+					if err != nil {
+						return err
+					}
+				}
+			}
+		}
+
+		// Inject default DROP rule
+		_ = injectRuleIntoNamespace(ns, "-i lo -j ACCEPT")
+		_ = injectRuleIntoNamespace(ns, "-m state --state ESTABLISHED,RELATED -j ACCEPT")
+		_ = injectRuleIntoNamespace(ns, "-j DROP")
 
 		return nil
 	},
 }
 
 // injectRuleIntoNamespace injects an iptables rule into the given namespace
+//TODO: use namespace package instead of manually entering namespace
 func injectRuleIntoNamespace(ns netns.NsHandle, rule string) error {
 	// Get current namespace
 	currentNs, err := netns.Get()
