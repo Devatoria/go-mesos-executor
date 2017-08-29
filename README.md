@@ -59,7 +59,7 @@ Please note that you are in charge of allowing needed sources for health checks.
 
 ### Introduction
 
-Since Mesos 1.1.0, health checks should be done locally, by the executor, in order to avoid network issues and be more scalable. Because the health check system should not be containerizer dependent, all checks are done by entering required namespaces and execute commands.
+Since Mesos 1.1.0, health checks should be done locally, by the executor, in order to avoid network issues and be more scalable. Because the health check system should not be containerizer dependent (except the command health check, more information below), all checks are done by entering required namespaces and execute commands.
 
 Please note that Mesos native health checks are actually not available in Marathon UI, and can be tested only when sending raw JSON. You must prefix the check protocol with `MESOS_` (only for HTTP and TCP). Another thing to know is that you can only have one Mesos native health check per task.
 
@@ -142,7 +142,6 @@ You can run tests using `make test`. Tests are using `testify` package to create
 * Implement docker parameters
   * Commands
 * Return container error message when an error occurs during container run
-* Find a way to handle health checks with ACL hook when masquerading is enabled (leading to see the caller IP in the container instead of the bridge IP)
 * Add some useful hooks
   * Error on privileged containers
   * Volumes sandboxing
