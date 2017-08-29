@@ -37,11 +37,11 @@ This hook removes the stopped container after shutting down (or task kill) in or
 
 This hook injects iptables rules in the container network namespace. To use it, just pass a list of IP, comma separated, with or without CIDR, to the `EXECUTOR_ALLOWED_IP` label. For example: `EXECUTOR_ALLOWED_IP: 8.8.8.8,10.0.0.0/24`.
 
-When at least one IP is injected, the hook appends some extra rules at the very end:
+As soon as the hook is enabled, and even if no user-defined rules are defined, it appends some extra rules at the very end:
 
 * one to allow traffic on the loopback interface
 * one to allow established and related traffic on all interfaces
-* one to drop all the traffic (maybe we should just change the default policy instead of adding an extra rule for this)
+* one to drop all the traffic
 
 You can add extra rules for all containers by adding this section to the configuration file:
 
@@ -51,7 +51,7 @@ acl:
     - 172.17.0.1/32
 ```
 
-Those rules will be injected **after** the label defined rules and **before** the default rules.
+Those rules will be injected **after** the label defined rules and **before** the default rules. All rules (except the default ones) are filtering on the mapped ports and protocols given in the task.
 
 Please note that you are in charge of allowing needed sources for health checks. If you are using the executor-based health checks (as described below), no extra rule is needed. If you are using framework-based health checks, you will have to allow either the bridge IP or the host IP (the one which is doing the health checks), depending on your container network configuration.
 
