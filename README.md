@@ -57,10 +57,6 @@ Please note that you are in charge of allowing needed sources for health checks.
 
 ## Health checks
 
-### Requirements
-
-* nsenter to enter specific process mount namespace
-
 ### Introduction
 
 Since Mesos 1.1.0, health checks should be done locally, by the executor, in order to avoid network issues and be more scalable. Because the health check system should not be containerizer dependent, all checks are done by entering required namespaces and execute commands.
@@ -113,7 +109,7 @@ Please note that `http.Get` can't be used here because runtime default transport
 
 * execute given command in the given container using its containerizer
 
-Please note that you can't get inside the mount namespace of a process in Go because of multithreading. In fact, even by locking the goroutine to a specific thread can't fix it. `setns` syscall must be called in a single-threaded context. You can, at least, call this syscall using Cgo (and constructor trick) to execute C code before running the Go runtime (and so, run this C code in a single-threaded context). But it doesn't allow to dynamically join a mount namespace while running. This is why I decided to use the [nsenter](http://man7.org/linux/man-pages/man1/nsenter.1.html) package that allows to execute a command into defined namespaces.
+Please note that you can't get inside the mount namespace of a process in Go because of multithreading. In fact, even by locking the goroutine to a specific thread can't fix it. `setns` syscall must be called in a single-threaded context. You can, at least, call this syscall using Cgo (and constructor trick) to execute C code before running the Go runtime (and so, run this C code in a single-threaded context). But it doesn't allow to dynamically join a mount namespace while running. This is why the containerizer is in charge of providing a way to execute a command inside the container.
 
 Please take a look at [this issue](https://stackoverflow.com/questions/25704661/calling-setns-from-go-returns-einval-for-mnt-namespace) and [this issue](https://github.com/golang/go/issues/8676) to know more about the `setns` Go issue.
 
@@ -158,6 +154,5 @@ You can run tests using `make test`. Tests are using `testify` package to create
     * Statuses for HTTP checks
 * Containerizer
   * libcontainer (runc)
-* Remove nsenter from deps (no more used)
 
 The executor actually does not handle custom parameters sent to Docker CLI. This has to be done with a matching enum (I think) and it is actually a little bit boring to do this :)
