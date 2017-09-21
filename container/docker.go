@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net"
 	"strconv"
 	"strings"
 
@@ -153,6 +154,29 @@ func (c *DockerContainerizer) ContainerGetPID(id string) (int, error) {
 	}
 
 	return con.State.Pid, nil
+}
+
+// ContainerGetIPs returns the IPs of the container in the different networks.
+// If the container is in host network, the function will return an empty map.
+func (c *DockerContainerizer) ContainerGetIPs(id string) (map[string]net.IP, error) {
+	ips := make(map[string]net.IP)
+	con, err := c.Client.InspectContainer(id)
+	if err != nil {
+		return ips, err
+	}
+
+	for name, conf := range con.NetworkSettings.Networks {
+		if name != "host" {
+			stringIP := conf.IPAddress
+			ip := net.ParseIP(stringIP)
+			if ip == nil {
+				return ips, fmt.Errorf("Invalid container IP: %s", stringIP)
+			}
+			ips[name] = ip
+		}
+	}
+
+	return ips, nil
 }
 
 // ContainerExec executes the given command in the given container with the given context
