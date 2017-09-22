@@ -139,6 +139,11 @@ You can run tests using `make test`. Tests are using `testify` package to create
 
 ## TODO
 
+* [BUG] Attach to container in order to shutdown the executor on container stops
+  * Reproduce:
+    * Launch a task
+    * Kill the container main PID
+    * Task will remain running but the container has been killed by Docker
 * Implement docker parameters
   * Commands
 * Return container error message when an error occurs during container run
