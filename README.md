@@ -149,6 +149,7 @@ You can run tests using `make test`. Tests are using `testify` package to create
 * [IMPROVEMENT] Trap SIGKILL in order to gracefuly shutdown the executor
 * [FEATURE] Implement docker parameters
   * Commands
+* [FEATURE] Add checkpointing support
 * [FEATURE] Return container error message when an error occurs during container run
 * [FEATURE] Add some useful hooks
   * Error on privileged containers
