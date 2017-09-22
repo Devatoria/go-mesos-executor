@@ -74,17 +74,17 @@ func init() {
 
 	// Flags given by the agent when running th executor
 	rootCmd.PersistentFlags().StringVar(&containerName, "container", "", "Container name")
-	rootCmd.PersistentFlags().StringVar(&docker, "docker", "", "???")
+	rootCmd.PersistentFlags().StringVar(&docker, "docker", "", "Docker executable path (unused)")
 	rootCmd.PersistentFlags().StringVar(&dockerSocket, "docker_socket", "", "Docker socket path")
-	rootCmd.PersistentFlags().BoolVar(&help, "help", false, "???")
-	rootCmd.PersistentFlags().BoolVar(&initializeDriverLogging, "initialize_driver_logging", true, "???")
+	rootCmd.PersistentFlags().BoolVar(&help, "help", false, "Prints the help message (unused)")
+	rootCmd.PersistentFlags().BoolVar(&initializeDriverLogging, "initialize_driver_logging", true, "This option has no effect when using the HTTP scheduler/executor APIs")
 	rootCmd.PersistentFlags().StringVar(&launcherDir, "launcher_dir", "", "Folder from where the executor is launched")
-	rootCmd.PersistentFlags().UintVar(&logBufSecs, "logbufsecs", 0, "???")
+	rootCmd.PersistentFlags().UintVar(&logBufSecs, "logbufsecs", 0, "Maximum number of seconds that logs may be buffered for.")
 	rootCmd.PersistentFlags().StringVar(&loggingLevel, "logging_level", "", "Logging level")
-	rootCmd.PersistentFlags().StringVar(&mappedDirectory, "mapped_directory", "", "Mesos mapped directory to mount (eg. sandbox)")
-	rootCmd.PersistentFlags().BoolVar(&quiet, "quiet", false, "???")
-	rootCmd.PersistentFlags().StringVar(&sandboxDirectory, "sandbox_directory", "", "Mesos sandbox directory to mount")
-	rootCmd.PersistentFlags().StringVar(&stopTimeout, "stop_timeout", "", "Timeout used to stop the container")
+	rootCmd.PersistentFlags().StringVar(&mappedDirectory, "mapped_directory", "", "The sandbox directory path that is mapped in the docker container")
+	rootCmd.PersistentFlags().BoolVar(&quiet, "quiet", false, "Disable logging to stderr")
+	rootCmd.PersistentFlags().StringVar(&sandboxDirectory, "sandbox_directory", "", "The path to the container sandbox holding stdout and stderr files into which docker container logs will be redirected")
+	rootCmd.PersistentFlags().StringVar(&stopTimeout, "stop_timeout", "", "Time to wait before killing a currently stopping container")
 
 	// Custom flags
 	rootCmd.PersistentFlags().Bool("debug", true, "Enable debug mode")
