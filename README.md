@@ -144,19 +144,22 @@ You can run tests using `make test`. Tests are using `testify` package to create
     * Launch a task
     * Kill the container main PID
     * Task will remain running but the container has been killed by Docker
-* Implement docker parameters
+* [IMPROVEMENT] Add teardown function to executor
+  * When a post-start hook or a pre-stop hook fail, executor is stopped but the container is not (we must run the "stop procedure" when an error happens, whatever the error could be)
+* [IMPROVEMENT] Trap SIGKILL in order to gracefuly shutdown the executor
+* [FEATURE] Implement docker parameters
   * Commands
-* Return container error message when an error occurs during container run
-* Add some useful hooks
+* [FEATURE] Return container error message when an error occurs during container run
+* [FEATURE] Add some useful hooks
   * Error on privileged containers
   * Volumes sandboxing
   * Forced network mode (bridged)
-* Health checks: please take a look at health checks section
+* [IMPROVEMENT] Health checks: please take a look at health checks section
   * Add HTTPS support (not tested)
   * Implement missing features
     * Environment, arguments and user for command checks
     * Statuses for HTTP checks
-* Containerizer
+* [FEATURE] Containerizer
   * libcontainer (runc)
 
 The executor actually does not handle custom parameters sent to Docker CLI. This has to be done with a matching enum (I think) and it is actually a little bit boring to do this :)
