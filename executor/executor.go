@@ -297,41 +297,7 @@ func (e *Executor) handleKill(ev *executor.Event) error {
 		return e.throwError(taskID, fmt.Errorf("%s task not found, unable to kill it", taskID.GetValue()))
 	}
 
-	// Quit and remove health checker (if existing)
-	e.HealthCheckersMutex.Lock()
-	if hc, ok := e.HealthCheckers[taskID]; ok {
-		hc.Quit <- struct{}{}
-	}
-
-	delete(e.HealthCheckers, taskID)
-	e.HealthCheckersMutex.Unlock()
-
-	// Run pre-stop hooks
-	err := e.HookManager.RunPreStopHooks(e.Containerizer, containerTaskInfo)
-	if err != nil {
-		return e.throwError(taskID, err)
-	}
-
-	// Stop container
-	err = e.Containerizer.ContainerStop(containerTaskInfo.ContainerID)
-	if err != nil {
-		return e.throwError(taskID, err)
-	}
-
-	// Run post-stop hooks
-	err = e.HookManager.RunPostStopHooks(e.Containerizer, containerTaskInfo)
-	if err != nil {
-		return e.throwError(taskID, err)
-	}
-
-	// Remove it from tasks
-	delete(e.ContainerTasks, taskID)
-
-	// Update status to TASK_KILLED
-	status := e.newStatus(taskID)
-	status.State = mesos.TASK_KILLED.Enum()
-
-	return e.updateStatus(status)
+	return e.tearDownTask(taskID, containerTaskInfo)
 }
 
 // handleAcknowledged removes the given task/update from unacked
@@ -368,30 +334,9 @@ func (e *Executor) handleShutdown(ev *executor.Event) error {
 			zap.String("taskID", taskID.GetValue()),
 		)
 
-		// Run pre-stop hooks
-		err := e.HookManager.RunPreStopHooks(e.Containerizer, containerTaskInfo)
+		err := e.tearDownTask(taskID, containerTaskInfo)
 		if err != nil {
-			return e.throwError(taskID, err)
-		}
-
-		// Stop container
-		err = e.Containerizer.ContainerStop(containerTaskInfo.ContainerID)
-		if err != nil {
-			return e.throwError(taskID, err)
-		}
-
-		// Run post-stop hooks
-		err = e.HookManager.RunPostStopHooks(e.Containerizer, containerTaskInfo)
-		if err != nil {
-			return e.throwError(taskID, err)
-		}
-
-		// Update status
-		status := e.newStatus(taskID)
-		status.State = mesos.TASK_KILLED.Enum()
-		err = e.updateStatus(status)
-		if err != nil {
-			return e.throwError(taskID, err)
+			e.throwError(taskID, err)
 		}
 	}
 
@@ -532,4 +477,44 @@ func (e *Executor) throwError(taskID mesos.TaskID, err error) error {
 	e.updateStatus(status)
 
 	return err
+}
+
+// tearDownTask kills the given task, running hooks and stopping associated container before
+// updating the task status
+func (e *Executor) tearDownTask(taskID mesos.TaskID, containerTaskInfo *types.ContainerTaskInfo) error {
+	// Quit and remove health checker (if existing)
+	e.HealthCheckersMutex.Lock()
+	if hc, ok := e.HealthCheckers[taskID]; ok {
+		hc.Quit <- struct{}{}
+	}
+
+	delete(e.HealthCheckers, taskID)
+	e.HealthCheckersMutex.Unlock()
+
+	// Run pre-stop hooks
+	err := e.HookManager.RunPreStopHooks(e.Containerizer, containerTaskInfo)
+	if err != nil {
+		return e.throwError(taskID, err)
+	}
+
+	// Stop container
+	err = e.Containerizer.ContainerStop(containerTaskInfo.ContainerID)
+	if err != nil {
+		return e.throwError(taskID, err)
+	}
+
+	// Run post-stop hooks
+	err = e.HookManager.RunPostStopHooks(e.Containerizer, containerTaskInfo)
+	if err != nil {
+		return e.throwError(taskID, err)
+	}
+
+	// Remove it from tasks
+	delete(e.ContainerTasks, taskID)
+
+	// Update status
+	status := e.newStatus(taskID)
+	status.State = mesos.TASK_KILLED.Enum()
+
+	return e.updateStatus(status)
 }
