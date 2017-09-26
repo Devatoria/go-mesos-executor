@@ -2,6 +2,7 @@ package container
 
 import (
 	"context"
+	"net"
 
 	"github.com/mesos/mesos-go/api/v1/lib"
 )
@@ -14,6 +15,7 @@ type Containerizer interface {
 	ContainerRun(id string) error                                                   // Starts the given container
 	ContainerStop(id string) error                                                  // Stops the given container
 	ContainerExec(ctx context.Context, id string, cmd []string) (result chan error) // Executes the given command with the given context in the given container and returns result in a chan (asynchronous)
+	ContainerGetIPs(id string) (ips map[string]net.IP, err error)                   // Returns the IP of the given container
 }
 
 // Info represents container information such as image name, CPU/memory limits...

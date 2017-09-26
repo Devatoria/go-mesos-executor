@@ -3,10 +3,14 @@ package container
 import (
 	"encoding/json"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 
+	"github.com/bouk/monkey"
+	docker "github.com/fsouza/go-dockerclient"
 	"github.com/mesos/mesos-go/api/v1/lib"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -14,10 +18,11 @@ import (
 
 type DockerContainerizerTestSuite struct {
 	suite.Suite
-	dc     *DockerContainerizer
-	info   Info
-	req    DockerContainerizerTestRequest
-	server *httptest.Server
+	dc        *DockerContainerizer
+	info      Info
+	req       DockerContainerizerTestRequest
+	server    *httptest.Server
+	container *docker.Container
 }
 
 type DockerContainerizerTestRequest struct {
@@ -47,6 +52,30 @@ func (s *DockerContainerizerTestSuite) SetupTest() {
 	if err != nil {
 		panic(err)
 	}
+
+	s.container = &docker.Container{
+		State: docker.State{
+			Pid: 1024,
+		},
+		NetworkSettings: &docker.NetworkSettings{
+			Networks: map[string]docker.ContainerNetwork{
+				"bridge": docker.ContainerNetwork{
+					IPAddress: "172.0.2.1",
+				},
+				"user_network": docker.ContainerNetwork{
+					IPAddress: "172.0.3.1",
+				},
+			},
+		},
+	}
+
+	monkey.PatchInstanceMethod(
+		reflect.TypeOf(s.dc.Client),
+		"InspectContainer",
+		func(_ *docker.Client, id string) (*docker.Container, error) {
+			return s.container, nil
+		},
+	)
 
 	// Info
 	hostPath := "/data"
@@ -86,6 +115,11 @@ func (s *DockerContainerizerTestSuite) SetupTest() {
 			},
 		},
 	}
+}
+
+func (s *DockerContainerizerTestSuite) TearDownTest() {
+	// Unpatch method after each test to allow the SetupTest to re-run as expected
+	monkey.UnpatchAll()
 }
 
 func (s *DockerContainerizerTestSuite) TestNewDockerContainerizer() {
@@ -180,11 +214,52 @@ func (s *DockerContainerizerTestSuite) TestDockerContainerRemove() {
 	assert.Empty(s.T(), s.req.body)
 }
 
-// Check that returns nil if everything is ok
+// Check that returns pid correctly
 func (s *DockerContainerizerTestSuite) TestDockerContainerGetPID() {
-	_, err := s.dc.ContainerGetPID("abcdef1234")
+	pid, err := s.dc.ContainerGetPID("abcdef1234")
 	assert.Nil(s.T(), err)
-	assert.Empty(s.T(), s.req.body)
+	assert.Equal(s.T(), s.container.State.Pid, pid)
+}
+
+// Check that returns ips in all networks
+// Check that returns empty map when container is in host mode
+func (s *DockerContainerizerTestSuite) TestDockerContainerGetIPs() {
+	// Check that returns ips in all networks
+	ips, err := s.dc.ContainerGetIPs("abcdef1234")
+	assert.Nil(s.T(), err)
+	assert.Equal(
+		s.T(),
+		map[string]net.IP{
+			"bridge":       net.ParseIP(s.container.NetworkSettings.Networks["bridge"].IPAddress),
+			"user_network": net.ParseIP(s.container.NetworkSettings.Networks["user_network"].IPAddress),
+		},
+		ips,
+	)
+
+	// Check that returns empty map when container is in host mode
+	monkey.PatchInstanceMethod(
+		reflect.TypeOf(s.dc.Client),
+		"InspectContainer",
+		func(_ *docker.Client, id string) (*docker.Container, error) {
+			return &docker.Container{
+				State: docker.State{
+					Pid: 1024,
+				},
+				NetworkSettings: &docker.NetworkSettings{
+					Networks: map[string]docker.ContainerNetwork{
+						"host": docker.ContainerNetwork{},
+					},
+				},
+			}, nil
+		},
+	)
+	ips, err = s.dc.ContainerGetIPs("abcdef1234")
+	assert.Nil(s.T(), err)
+	assert.Equal(
+		s.T(),
+		map[string]net.IP{},
+		ips,
+	)
 }
 
 func TestDockerContainerizerSuite(t *testing.T) {

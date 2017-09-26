@@ -49,6 +49,11 @@ func (f *FakeContainerizer) ContainerGetPID(id string) (int, error) {
 	return 666, nil
 }
 
+// ContainerGetIPs returns a fake IP
+func (f *FakeContainerizer) ContainerGetIPs(id string) (map[string]net.IP, error) {
+	return map[string]net.IP{"bridge": net.ParseIP("127.0.0.1")}, nil
+}
+
 // ContainerGetGatewayIP returns a fake IP
 func (f *FakeContainerizer) ContainerGetGatewayIP(id string) (net.IP, error) {
 	return net.ParseIP("127.0.0.1"), nil
