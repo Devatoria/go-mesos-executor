@@ -4,7 +4,7 @@ services:
     image: zookeeper:3.4.10
     network_mode: host
   mesos_master:
-    image: mesosphere/mesos-master:1.2.0
+    image: mesosphere/mesos-master:1.3.1
     network_mode: host
     environment:
       MESOS_ZK: "zk://localhost:2181/mesos"
@@ -15,7 +15,7 @@ services:
     depends_on:
       - zookeeper
   mesos_agent:
-    build: .
+    image: mesosphere/mesos-slave:1.3.1
     network_mode: host
     privileged: true
     volumes:
@@ -31,6 +31,7 @@ services:
       MESOS_WORK_DIR: "/var/tmp/mesos"
       MESOS_LOG_DIR: "/var/log/mesos"
       MESOS_CONTAINERIZERS: "docker,mesos"
+      MESOS_SYSTEMD_ENABLE_SUPPORT: "false"
     depends_on:
       - zookeeper
       - mesos_master
