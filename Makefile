@@ -12,7 +12,7 @@ deb:	build
 	chmod 0755 ./$(PROJECTNAME)-deb/DEBIAN
 	cp ./config.yaml ./$(PROJECTNAME)-deb/etc/mesos-executor/
 	cp ./go-mesos-executor ./$(PROJECTNAME)-deb/usr/sbin/mesos-container-executor
-	printf "Package: mesos-executor\nMaintainer: Debian <bu.docker@interne.ovh.net>\nVersion: $(VERSION)\nPriority: optional\nArchitecture: amd64\nSection: misc\nDepends: libc6\nDescription: Allow mesos to create docker containers\n" > $(PROJECTNAME)-deb/DEBIAN/control
+	printf "Package: mesos-executor\nMaintainer: Debian <docker@ml.ovh.net>\nVersion: $(VERSION)\nPriority: optional\nArchitecture: amd64\nSection: misc\nDepends: libc6\nDescription: Allow mesos to create docker containers\n" > $(PROJECTNAME)-deb/DEBIAN/control
 	dpkg-deb --build $(PROJECTNAME)-deb .
 	rm -rf ./$(PROJECTNAME)-deb
 
