@@ -278,8 +278,15 @@ func (e *Executor) handleLaunch(ev *executor.Event) error {
 	// Update status to RUNNING
 	status := e.newStatus(task.GetTaskID())
 	status.State = mesos.TASK_RUNNING.Enum()
+	err = e.updateStatus(status)
+	if err != nil {
+		return e.throwError(task.GetTaskID(), err)
+	}
 
-	return e.updateStatus(status)
+	// Handle the container exit
+	go e.waitContainer(e.ContainerTasks[task.TaskID], task.GetTaskID())
+
+	return nil
 }
 
 // handleKill kills given task and updates status
@@ -297,7 +304,15 @@ func (e *Executor) handleKill(ev *executor.Event) error {
 		return e.throwError(taskID, fmt.Errorf("%s task not found, unable to kill it", taskID.GetValue()))
 	}
 
-	return e.tearDownTask(taskID, containerTaskInfo)
+	err := e.tearDownTask(taskID, containerTaskInfo)
+	if err != nil {
+		return e.throwError(taskID, err)
+	}
+
+	status := e.newStatus(taskID)
+	status.State = mesos.TASK_KILLED.Enum()
+
+	return e.updateStatus(status)
 }
 
 // handleAcknowledged removes the given task/update from unacked
@@ -338,6 +353,10 @@ func (e *Executor) handleShutdown(ev *executor.Event) error {
 		if err != nil {
 			e.throwError(taskID, err)
 		}
+
+		status := e.newStatus(taskID)
+		status.State = mesos.TASK_KILLED.Enum()
+		e.updateStatus(status)
 	}
 
 	// Shutdown
@@ -494,27 +513,61 @@ func (e *Executor) tearDownTask(taskID mesos.TaskID, containerTaskInfo *types.Co
 	// Run pre-stop hooks
 	err := e.HookManager.RunPreStopHooks(e.Containerizer, containerTaskInfo)
 	if err != nil {
-		return e.throwError(taskID, err)
+		return err
 	}
 
 	// Stop container
 	err = e.Containerizer.ContainerStop(containerTaskInfo.ContainerID)
 	if err != nil {
-		return e.throwError(taskID, err)
+		return err
 	}
 
 	// Run post-stop hooks
 	err = e.HookManager.RunPostStopHooks(e.Containerizer, containerTaskInfo)
 	if err != nil {
-		return e.throwError(taskID, err)
+		return err
 	}
 
 	// Remove it from tasks
 	delete(e.ContainerTasks, taskID)
 
-	// Update status
+	return nil
+}
+
+// waitContainer waits for the given container to stop,
+// making the associated task to teardown
+func (e *Executor) waitContainer(containerTaskInfo *types.ContainerTaskInfo, taskID mesos.TaskID) error {
+	logger.GetInstance().Info("Waiting for container to finish",
+		zap.String("Container", containerTaskInfo.ContainerID),
+		zap.String("Task", taskID.GetValue()),
+	)
+
+	code, err := e.Containerizer.ContainerWait(containerTaskInfo.ContainerID)
+	if err != nil {
+		logger.GetInstance().Error("Error while waiting for container to stop",
+			zap.String("Container", containerTaskInfo.ContainerID),
+			zap.String("Task", taskID.GetValue()),
+			zap.Error(err),
+		)
+
+		return e.throwError(taskID, err)
+	}
+
+	logger.GetInstance().Info("Container exited",
+		zap.Int("Code", code),
+		zap.String("Container", containerTaskInfo.ContainerID),
+		zap.String("Task", taskID.GetValue()),
+	)
+
+	err = e.tearDownTask(taskID, containerTaskInfo)
+	if err != nil {
+		return e.throwError(taskID, err)
+	}
+
+	message := fmt.Sprintf("Container exited (code %d)", code)
 	status := e.newStatus(taskID)
-	status.State = mesos.TASK_KILLED.Enum()
+	status.State = mesos.TASK_FINISHED.Enum()
+	status.Message = &message
 
 	return e.updateStatus(status)
 }

@@ -14,6 +14,7 @@ type Containerizer interface {
 	ContainerRemove(id string) error                                                // Removes the given container
 	ContainerRun(id string) error                                                   // Starts the given container
 	ContainerStop(id string) error                                                  // Stops the given container
+	ContainerWait(id string) (code int, err error)                                  // Wait for the given container to stop, returning its exit code
 	ContainerExec(ctx context.Context, id string, cmd []string) (result chan error) // Executes the given command with the given context in the given container and returns result in a chan (asynchronous)
 	ContainerGetIPs(id string) (ips map[string]net.IP, err error)                   // Returns the IP of the given container
 }

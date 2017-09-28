@@ -206,3 +206,9 @@ func (c *DockerContainerizer) ContainerExec(ctx context.Context, id string, cmd 
 
 	return result
 }
+
+// ContainerWait waits for the given container to stop and returns its
+// exit code. This function is blocking.
+func (c *DockerContainerizer) ContainerWait(id string) (int, error) {
+	return c.Client.WaitContainer(id)
+}

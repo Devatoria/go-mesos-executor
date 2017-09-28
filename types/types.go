@@ -68,3 +68,8 @@ func (f *FakeContainerizer) ContainerExec(ctx context.Context, id string, cmd []
 
 	return ch
 }
+
+// ContainerWait returns the 0 exit code with no error
+func (f *FakeContainerizer) ContainerWait(id string) (code int, err error) {
+	return 0, nil
+}

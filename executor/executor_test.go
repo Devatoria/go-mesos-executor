@@ -224,6 +224,18 @@ func (s *ExecutorTestSuite) TestHandleAcknowledged() {
 // - a status update (RUNNING) is pushed in unacks
 // - returns an error if a pre-create/pre-run/post-run hook fails
 func (s *ExecutorTestSuite) TestHandleLaunch() {
+	// Patch waitContainer in order to fake a long-running container (never stopped)
+	done := make(chan struct{})
+	monkey.PatchInstanceMethod(reflect.TypeOf(s.executor.Containerizer), "ContainerWait", func(_ *types.FakeContainerizer, _ string) (int, error) {
+		select {
+		case <-done:
+			break
+		}
+
+		return 0, nil
+	})
+	defer monkey.UnpatchAll()
+
 	// Unacked tasks/updates should be empty
 	assert.Empty(s.T(), s.executor.UnackedTasks)
 	assert.Empty(s.T(), s.executor.UnackedUpdates)
@@ -254,17 +266,20 @@ func (s *ExecutorTestSuite) TestHandleLaunch() {
 	assert.Error(s.T(), s.executor.handleLaunch(&ev))
 	assert.Equal(s.T(), *mesos.TASK_FAILED.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_FAILED update
 
-	// Nominal case
-	s.executor.HookManager.PostRunHooks = []*hook.Hook{} // Remove previously added failing hook
-	assert.Nil(s.T(), s.executor.handleLaunch(&ev))      // Should return nil (launch successful)
-	assert.NotEmpty(s.T(), s.executor.UnackedTasks)      // Should not be empty (task waiting for acknowledgment)
-	assert.NotEmpty(s.T(), s.executor.ContainerTasks)    // Should not be empty (new running task for this container)
-
+	// Nominal case (long-running container)
+	s.executor.HookManager.PostRunHooks = []*hook.Hook{}                                                      // Remove previously added failing hooks
+	assert.Nil(s.T(), s.executor.handleLaunch(&ev))                                                           // Should return nil (launch successful)
+	assert.NotEmpty(s.T(), s.executor.UnackedTasks)                                                           // Should not be empty (task waiting for acknowledgment)
+	assert.NotEmpty(s.T(), s.executor.ContainerTasks)                                                         // Should not be empty (new running task for this container)
 	assert.NotEmpty(s.T(), s.executor.UnackedUpdates)                                                         // Should not be empty (TASK_RUNNING update)
-	assert.Equal(s.T(), *mesos.TASK_RUNNING.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_FAILED update
-
-	containerTask := s.executor.ContainerTasks[s.taskInfo.GetTaskID()]
-	assert.Equal(s.T(), "fakeContainerID", containerTask.ContainerID) // Should be equal to the container ID
+	assert.Equal(s.T(), *mesos.TASK_RUNNING.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_RUNNING update
+	containerTask := s.executor.ContainerTasks[s.taskInfo.GetTaskID()]                                        // Get running task
+	assert.Equal(s.T(), "fakeContainerID", containerTask.ContainerID)                                         // Should be equal to the container ID
+	assert.Empty(s.T(), s.executor.UnackedUpdates)                                                            // Should be empty
+	close(done)                                                                                               // Simulate container exit
+	for len(s.executor.UnackedUpdates) == 0 {                                                                 // Wait for TASK_FINISHED update to be sent (async)
+	}
+	assert.Equal(s.T(), *mesos.TASK_FINISHED.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_FINISHED update
 }
 
 // Check that:
@@ -309,7 +324,7 @@ func (s *ExecutorTestSuite) TestHandleKill() {
 	assert.Empty(s.T(), s.executor.ContainerTasks) // Should be empty (task removed from container tasks)
 
 	assert.NotEmpty(s.T(), s.executor.UnackedUpdates)                                                        // Should not be empty (TASK_KILLED update)
-	assert.Equal(s.T(), *mesos.TASK_KILLED.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_KILLED  update
+	assert.Equal(s.T(), *mesos.TASK_KILLED.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_KILLED update
 }
 
 // Check that:
@@ -336,19 +351,19 @@ func (s *ExecutorTestSuite) TestHandleShutdown() {
 	// Should throw an error on hook fail
 	// Pre-stop hook case
 	s.executor.HookManager.RegisterHooks("pre-stop", s.errorHook)
-	assert.Error(s.T(), s.executor.handleShutdown(&ev))
+	assert.Nil(s.T(), s.executor.handleShutdown(&ev))
 	assert.Equal(s.T(), *mesos.TASK_FAILED.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_FAILED update
 
 	// Post-stop hook case
 	s.executor.HookManager.PreStopHooks = []*hook.Hook{}
 	s.executor.HookManager.RegisterHooks("post-stop", s.errorHook)
-	assert.Error(s.T(), s.executor.handleShutdown(&ev))
+	assert.Nil(s.T(), s.executor.handleShutdown(&ev))
 	assert.Equal(s.T(), *mesos.TASK_FAILED.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_FAILED update
 
 	// Nominal case
 	s.executor.HookManager.PostStopHooks = []*hook.Hook{}
 	assert.Nil(s.T(), s.executor.handleShutdown(&ev)) // Should return nil (kill successful)
-	assert.NotEmpty(s.T(), s.executor.ContainerTasks) // Should not be empty (tasks are not removed because we're shutting down the executor AND accessing map values in a loop)
+	assert.Empty(s.T(), s.executor.ContainerTasks)    // Should be empty (tasks are removed one by one by teardown function)
 
 	assert.NotEmpty(s.T(), s.executor.UnackedUpdates)                                                        // Should not be empty (TASK_KILLED update)
 	assert.Equal(s.T(), *mesos.TASK_KILLED.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_KILLED update
@@ -471,6 +486,80 @@ func (s *ExecutorTestSuite) TestHealthCheck() {
 	})
 	s.executor.healthCheck(taskID)
 	assert.Len(s.T(), s.executor.UnackedUpdates, 1) // Should contain an update (KILLED or FAILED)
+}
+
+func (s *ExecutorTestSuite) TestTearDownTask() {
+	// Create fake checker for task
+	checker := healthcheck.NewChecker(0, nil, "", nil)
+	taskID := mesos.TaskID{
+		Value: s.taskInfo.TaskID.Value,
+	}
+	s.executor.HealthCheckers[taskID] = checker
+
+	// Handle the fake checker exit (avoid deadlock)
+	go func() {
+		<-checker.Quit
+	}()
+
+	// Create a fake container task
+	containerTaskInfo := &types.ContainerTaskInfo{
+		ContainerID: "fakeContainerID",
+		TaskInfo:    s.taskInfo,
+	}
+	s.executor.ContainerTasks[s.taskInfo.TaskID] = containerTaskInfo
+
+	// Patch functions in order to catch calls
+	runPreStopHooksCalled := false
+	monkey.PatchInstanceMethod(reflect.TypeOf(s.executor.HookManager), "RunPreStopHooks", func(_ *hook.Manager, c container.Containerizer, info *types.ContainerTaskInfo) error {
+		runPreStopHooksCalled = true
+
+		return nil
+	})
+
+	runPostStopHooksCalled := false
+	monkey.PatchInstanceMethod(reflect.TypeOf(s.executor.HookManager), "RunPostStopHooks", func(_ *hook.Manager, c container.Containerizer, info *types.ContainerTaskInfo) error {
+		runPostStopHooksCalled = true
+
+		return nil
+	})
+
+	runContainerStop := false
+	monkey.PatchInstanceMethod(reflect.TypeOf(s.executor.Containerizer), "ContainerStop", func(_ *types.FakeContainerizer, id string) error {
+		runContainerStop = true
+
+		return nil
+	})
+
+	// Nominal case
+	// - should stop and remove the checker
+	// - should execute the pre/post stop hooks
+	// - should stop the container
+	// - should remove the associated task
+	assert.Nil(s.T(), s.executor.tearDownTask(taskID, containerTaskInfo)) // Should be nil (no error)
+	assert.Empty(s.T(), s.executor.HealthCheckers)                        // Should be empty (no more checkers)
+	assert.True(s.T(), runPreStopHooksCalled)                             // Should be true (pre-stop hooks ran)
+	assert.True(s.T(), runContainerStop)                                  // Should be true (container should be stopped)
+	assert.True(s.T(), runPostStopHooksCalled)                            // Should be true (post-stop hooks ran)
+	assert.Empty(s.T(), s.executor.ContainerTasks)                        // Should be empty (no more tasks)
+
+	monkey.UnpatchAll()
+}
+
+func (s *ExecutorTestSuite) TestWaitContainer() {
+	taskID := mesos.TaskID{
+		Value: s.taskInfo.TaskID.Value,
+	}
+	containerTaskInfo := &types.ContainerTaskInfo{
+		ContainerID: "fakeContainerID",
+		TaskInfo:    s.taskInfo,
+	}
+
+	// Nominal case
+	// - should wait for container
+	// - should send a TASK_FINISHED update
+	assert.Nil(s.T(), s.executor.waitContainer(containerTaskInfo, taskID))                                     // Should be nil (container exited, waited successfuly)
+	assert.NotEmpty(s.T(), s.executor.UnackedUpdates)                                                          // Should not be empty (containing finished update)
+	assert.Equal(s.T(), *mesos.TASK_FINISHED.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_FINISHED update
 }
 
 // Launch test suite
