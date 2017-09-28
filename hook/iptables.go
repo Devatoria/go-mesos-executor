@@ -2,8 +2,10 @@ package hook
 
 import (
 	"fmt"
+	"net"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/Devatoria/go-mesos-executor/container"
 	"github.com/Devatoria/go-mesos-executor/logger"
@@ -15,11 +17,15 @@ import (
 )
 
 const (
-	iptableHookDnatRuleTemplate           = "-i !%s -p %s -j DNAT --dport %s --to-destination %s"
-	iptableHookMasqueradeRuleTemplate     = "-o !%s -s %s/32 -j MASQUERADE"
-	iptableHookSelfMasqueradeRuleTemplate = "-d %s/32 -p %s -s %s/32 -j MASQUERADE --dport %s"
-	iptableHookForwardRuleTemplate        = "-d %s/32 -i !%s -o %s -p %s -j ACCEPT --dport %s"
+	iptableHookDnatRuleTemplate           = "-i !%s -p %s -j DNAT --dport %s --to-destination %s --wait"
+	iptableHookMasqueradeRuleTemplate     = "-o !%s -s %s/32 -j MASQUERADE --wait"
+	iptableHookSelfMasqueradeRuleTemplate = "-d %s/32 -p %s -s %s/32 -j MASQUERADE --dport %s --wait"
+	iptableHookForwardRuleTemplate        = "-d %s/32 -i !%s -o %s -p %s -j ACCEPT --dport %s --wait"
 )
+
+// containerIpCache is a map containing the containers ips. This map is useful when
+// removing iptables when containers is stopped and does not have an IP anymore.
+var iptablesHookContainerIPCache = sync.Map{}
 
 // InsertIptablesHook injects iptables rules on host. This iptables allow container masquerading
 // and network forwarding to container.
@@ -34,14 +40,23 @@ var InsertIptablesHook = Hook{
 			return nil
 		}
 
-		logger.GetInstance().Debug("Inserting iptables on host namespace")
+		logger.GetInstance().Debug(fmt.Sprintf("Inserting iptables on host namespace for container %s", info.ContainerID))
 
 		driver, err := iptables.New()
 		if err != nil {
 			return err
 		}
 
-		err = generateIptables(c, info, driver.Append)
+		portMappings := info.TaskInfo.GetContainer().GetDocker().GetPortMappings()
+
+		// Get container ip
+		containerIPs, err := c.ContainerGetIPs(info.ContainerID)
+		if err != nil {
+			return err
+		}
+		iptablesHookContainerIPCache.Store(info.ContainerID, containerIPs)
+
+		err = generateIptables(containerIPs, portMappings, driver.Append, true)
 		if err != nil {
 			return err
 		}
@@ -62,14 +77,33 @@ var RemoveIptablesHook = Hook{
 			return nil
 		}
 
-		logger.GetInstance().Debug("Removing iptables on host namespace")
+		logger.GetInstance().Debug(fmt.Sprintf("Removing iptables on host namespace for container %s", info.ContainerID))
 
 		driver, err := iptables.New()
 		if err != nil {
 			return err
 		}
 
-		err = generateIptables(c, info, driver.Delete)
+		portMappings := info.TaskInfo.GetContainer().GetDocker().GetPortMappings()
+
+		// Retrieve container IPs from cache
+		ipsCacheValue, ok := iptablesHookContainerIPCache.Load(info.ContainerID)
+		if !ok {
+			return fmt.Errorf(
+				"Could not find ip in cache for container %s.",
+				info.ContainerID,
+			)
+		}
+
+		containerIPs, ok := ipsCacheValue.(map[string]net.IP)
+		if !ok {
+			return fmt.Errorf(
+				"Could not load ip from cache for container %s.",
+				info.ContainerID,
+			)
+		}
+
+		err = generateIptables(containerIPs, portMappings, driver.Delete, false)
 		if err != nil {
 			return err
 		}
@@ -80,17 +114,15 @@ var RemoveIptablesHook = Hook{
 
 // generateIptables generates all needed iptables for containers masquerading/ network forwarding.
 // The action function is called with each iptable generated.
-func generateIptables(c container.Containerizer, info *types.ContainerTaskInfo, action func(string, string, ...string) error) error {
+func generateIptables(
+	containerIPs map[string]net.IP,
+	portMappings []mesos.ContainerInfo_DockerInfo_PortMapping,
+	action func(string, string, ...string) error,
+	stopOnError bool) error {
 	// Get docker interface
 	containerInterface := viper.GetString("iptables.container_bridge_interface")
-
-	// Get task container ports
-	portMappings := info.TaskInfo.GetContainer().GetDocker().GetPortMappings()
-
-	// Get container ip
-	containerIPs, err := c.ContainerGetIPs(info.ContainerID)
-	if err != nil {
-		return err
+	if containerInterface == "" {
+		return fmt.Errorf("Error : could not retrieve container brigde interface.")
 	}
 
 	// Iterate over all container IPs, and for each IP, iterate on container/host binded ports.
@@ -103,9 +135,13 @@ func generateIptables(c container.Containerizer, info *types.ContainerTaskInfo, 
 			containerInterface,
 			containerIP.String(),
 		)
-		err = action("nat", "POSTROUTING", strings.Split(masqueradeRule, " ")...)
+		err := action("nat", "POSTROUTING", strings.Split(masqueradeRule, " ")...)
 		if err != nil {
-			return err
+			if stopOnError == true {
+				return err
+			} else {
+				logger.GetInstance().Warn(err.Error())
+			}
 		}
 
 		for _, port := range portMappings {
@@ -120,7 +156,11 @@ func generateIptables(c container.Containerizer, info *types.ContainerTaskInfo, 
 			)
 			err = action("nat", "PREROUTING", strings.Split(dnatRule, " ")...)
 			if err != nil {
-				return err
+				if stopOnError == true {
+					return err
+				} else {
+					logger.GetInstance().Warn(err.Error())
+				}
 			}
 
 			// Insert rule for masquerading container -> container network flow
@@ -133,7 +173,11 @@ func generateIptables(c container.Containerizer, info *types.ContainerTaskInfo, 
 			)
 			err = action("nat", "POSTROUTING", strings.Split(selfMasqueradeRule, " ")...)
 			if err != nil {
-				return err
+				if stopOnError == true {
+					return err
+				} else {
+					logger.GetInstance().Warn(err.Error())
+				}
 			}
 
 			// Insert rule for forwarding incoming data on host port to container
@@ -147,7 +191,11 @@ func generateIptables(c container.Containerizer, info *types.ContainerTaskInfo, 
 			)
 			err = action("filter", "FORWARD", strings.Split(forwardRule, " ")...)
 			if err != nil {
-				return err
+				if stopOnError == true {
+					return err
+				} else {
+					logger.GetInstance().Warn(err.Error())
+				}
 			}
 		}
 	}
