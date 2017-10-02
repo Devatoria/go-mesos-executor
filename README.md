@@ -165,5 +165,6 @@ You can run tests using `make test`. Tests are using `testify` package to create
     * Statuses for HTTP checks
 * [FEATURE] Containerizer
   * libcontainer (runc)
+* [IMPROVEMENT] Refactor iptables hook code to improve readability and visibility. (Write a wrapper for iptables module, use a struct for all iptables parameters)
 
 The executor actually does not handle custom parameters sent to Docker CLI. This has to be done with a matching enum (I think) and it is actually a little bit boring to do this :)
