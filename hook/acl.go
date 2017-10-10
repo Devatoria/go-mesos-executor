@@ -75,7 +75,7 @@ var ACLHook = Hook{
 				}
 
 				// IP is correct but with a CIDR
-				if _, _, err := net.ParseCIDR(ip); err == nil {
+				if _, _, err = net.ParseCIDR(ip); err == nil {
 					parsedIPs = append(parsedIPs, ip)
 					continue
 				}
@@ -159,10 +159,5 @@ func injectRuleIntoNamespace(ns netns.NsHandle, rule string) error {
 		return err
 	}
 
-	err = driver.Append("filter", "INPUT", ruleParts...)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return driver.Append("filter", "INPUT", ruleParts...)
 }

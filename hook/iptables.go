@@ -56,12 +56,7 @@ var InsertIptablesHook = Hook{
 		}
 		iptablesHookContainerIPCache.Store(info.ContainerID, containerIPs)
 
-		err = generateIptables(containerIPs, portMappings, driver.Append, true)
-		if err != nil {
-			return err
-		}
-
-		return nil
+		return generateIptables(containerIPs, portMappings, driver.Append, true)
 	},
 }
 
@@ -90,7 +85,7 @@ var RemoveIptablesHook = Hook{
 		ipsCacheValue, ok := iptablesHookContainerIPCache.Load(info.ContainerID)
 		if !ok {
 			return fmt.Errorf(
-				"Could not find ip in cache for container %s.",
+				"could not find ip in cache for container %s",
 				info.ContainerID,
 			)
 		}
@@ -98,17 +93,12 @@ var RemoveIptablesHook = Hook{
 		containerIPs, ok := ipsCacheValue.(map[string]net.IP)
 		if !ok {
 			return fmt.Errorf(
-				"Could not load ip from cache for container %s.",
+				"could not load ip from cache for container %s",
 				info.ContainerID,
 			)
 		}
 
-		err = generateIptables(containerIPs, portMappings, driver.Delete, false)
-		if err != nil {
-			return err
-		}
-
-		return nil
+		return generateIptables(containerIPs, portMappings, driver.Delete, false)
 	},
 }
 
@@ -122,7 +112,7 @@ func generateIptables(
 	// Get docker interface
 	containerInterface := viper.GetString("iptables.container_bridge_interface")
 	if containerInterface == "" {
-		return fmt.Errorf("Error : could not retrieve container brigde interface.")
+		return fmt.Errorf("could not retrieve container brigde interface")
 	}
 
 	// Iterate over all container IPs, and for each IP, iterate on container/host binded ports.
@@ -137,11 +127,11 @@ func generateIptables(
 		)
 		err := action("nat", "POSTROUTING", strings.Split(masqueradeRule, " ")...)
 		if err != nil {
-			if stopOnError == true {
+			if stopOnError {
 				return err
-			} else {
-				logger.GetInstance().Warn(err.Error())
 			}
+
+			logger.GetInstance().Warn(err.Error())
 		}
 
 		for _, port := range portMappings {
@@ -156,11 +146,11 @@ func generateIptables(
 			)
 			err = action("nat", "PREROUTING", strings.Split(dnatRule, " ")...)
 			if err != nil {
-				if stopOnError == true {
+				if stopOnError {
 					return err
-				} else {
-					logger.GetInstance().Warn(err.Error())
 				}
+
+				logger.GetInstance().Warn(err.Error())
 			}
 
 			// Insert rule for masquerading container -> container network flow
@@ -173,11 +163,11 @@ func generateIptables(
 			)
 			err = action("nat", "POSTROUTING", strings.Split(selfMasqueradeRule, " ")...)
 			if err != nil {
-				if stopOnError == true {
+				if stopOnError {
 					return err
-				} else {
-					logger.GetInstance().Warn(err.Error())
 				}
+
+				logger.GetInstance().Warn(err.Error())
 			}
 
 			// Insert rule for forwarding incoming data on host port to container
@@ -191,11 +181,11 @@ func generateIptables(
 			)
 			err = action("filter", "FORWARD", strings.Split(forwardRule, " ")...)
 			if err != nil {
-				if stopOnError == true {
+				if stopOnError {
 					return err
-				} else {
-					logger.GetInstance().Warn(err.Error())
 				}
+
+				logger.GetInstance().Warn(err.Error())
 			}
 		}
 	}

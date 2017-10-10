@@ -45,16 +45,12 @@ func (c *DockerContainerizer) ContainerCreate(info Info) (string, error) {
 	switch info.TaskInfo.GetContainer().GetDocker().GetNetwork() {
 	case mesos.ContainerInfo_DockerInfo_HOST:
 		networkMode = "host"
-		break
 	case mesos.ContainerInfo_DockerInfo_BRIDGE:
 		networkMode = "bridge"
-		break
 	case mesos.ContainerInfo_DockerInfo_NONE:
 		networkMode = "none"
-		break
 	case mesos.ContainerInfo_DockerInfo_USER:
 		networkMode = "user"
-		break
 	default:
 		return "", fmt.Errorf("Invalid network mode")
 	}
@@ -126,12 +122,7 @@ func (c *DockerContainerizer) ContainerCreate(info Info) (string, error) {
 
 // ContainerRun launches a new container with the given containerizer
 func (c *DockerContainerizer) ContainerRun(id string) error {
-	err := c.Client.StartContainer(id, nil)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return c.Client.StartContainer(id, nil)
 }
 
 // ContainerStop stops the given container
