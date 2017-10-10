@@ -278,8 +278,15 @@ func (e *Executor) handleLaunch(ev *executor.Event) error {
 	// Update status to RUNNING
 	status := e.newStatus(task.GetTaskID())
 	status.State = mesos.TASK_RUNNING.Enum()
+	err = e.updateStatus(status)
+	if err != nil {
+		return e.throwError(task.GetTaskID(), err)
+	}
 
-	return e.updateStatus(status)
+	// Handle the container exit
+	go e.waitContainer(e.ContainerTasks[task.TaskID], task.GetTaskID())
+
+	return nil
 }
 
 // handleKill kills given task and updates status
@@ -297,37 +304,11 @@ func (e *Executor) handleKill(ev *executor.Event) error {
 		return e.throwError(taskID, fmt.Errorf("%s task not found, unable to kill it", taskID.GetValue()))
 	}
 
-	// Quit and remove health checker (if existing)
-	e.HealthCheckersMutex.Lock()
-	if hc, ok := e.HealthCheckers[taskID]; ok {
-		hc.Quit <- struct{}{}
-	}
-
-	delete(e.HealthCheckers, taskID)
-	e.HealthCheckersMutex.Unlock()
-
-	// Run pre-stop hooks
-	err := e.HookManager.RunPreStopHooks(e.Containerizer, containerTaskInfo)
+	err := e.tearDownTask(taskID, containerTaskInfo)
 	if err != nil {
 		return e.throwError(taskID, err)
 	}
 
-	// Stop container
-	err = e.Containerizer.ContainerStop(containerTaskInfo.ContainerID)
-	if err != nil {
-		return e.throwError(taskID, err)
-	}
-
-	// Run post-stop hooks
-	err = e.HookManager.RunPostStopHooks(e.Containerizer, containerTaskInfo)
-	if err != nil {
-		return e.throwError(taskID, err)
-	}
-
-	// Remove it from tasks
-	delete(e.ContainerTasks, taskID)
-
-	// Update status to TASK_KILLED
 	status := e.newStatus(taskID)
 	status.State = mesos.TASK_KILLED.Enum()
 
@@ -368,31 +349,14 @@ func (e *Executor) handleShutdown(ev *executor.Event) error {
 			zap.String("taskID", taskID.GetValue()),
 		)
 
-		// Run pre-stop hooks
-		err := e.HookManager.RunPreStopHooks(e.Containerizer, containerTaskInfo)
+		err := e.tearDownTask(taskID, containerTaskInfo)
 		if err != nil {
-			return e.throwError(taskID, err)
+			e.throwError(taskID, err)
 		}
 
-		// Stop container
-		err = e.Containerizer.ContainerStop(containerTaskInfo.ContainerID)
-		if err != nil {
-			return e.throwError(taskID, err)
-		}
-
-		// Run post-stop hooks
-		err = e.HookManager.RunPostStopHooks(e.Containerizer, containerTaskInfo)
-		if err != nil {
-			return e.throwError(taskID, err)
-		}
-
-		// Update status
 		status := e.newStatus(taskID)
 		status.State = mesos.TASK_KILLED.Enum()
-		err = e.updateStatus(status)
-		if err != nil {
-			return e.throwError(taskID, err)
-		}
+		e.updateStatus(status)
 	}
 
 	// Shutdown
@@ -532,4 +496,78 @@ func (e *Executor) throwError(taskID mesos.TaskID, err error) error {
 	e.updateStatus(status)
 
 	return err
+}
+
+// tearDownTask kills the given task, running hooks and stopping associated container before
+// updating the task status
+func (e *Executor) tearDownTask(taskID mesos.TaskID, containerTaskInfo *types.ContainerTaskInfo) error {
+	// Quit and remove health checker (if existing)
+	e.HealthCheckersMutex.Lock()
+	if hc, ok := e.HealthCheckers[taskID]; ok {
+		hc.Quit <- struct{}{}
+	}
+
+	delete(e.HealthCheckers, taskID)
+	e.HealthCheckersMutex.Unlock()
+
+	// Run pre-stop hooks
+	err := e.HookManager.RunPreStopHooks(e.Containerizer, containerTaskInfo)
+	if err != nil {
+		return err
+	}
+
+	// Stop container
+	err = e.Containerizer.ContainerStop(containerTaskInfo.ContainerID)
+	if err != nil {
+		return err
+	}
+
+	// Run post-stop hooks
+	err = e.HookManager.RunPostStopHooks(e.Containerizer, containerTaskInfo)
+	if err != nil {
+		return err
+	}
+
+	// Remove it from tasks
+	delete(e.ContainerTasks, taskID)
+
+	return nil
+}
+
+// waitContainer waits for the given container to stop,
+// making the associated task to teardown
+func (e *Executor) waitContainer(containerTaskInfo *types.ContainerTaskInfo, taskID mesos.TaskID) error {
+	logger.GetInstance().Info("Waiting for container to finish",
+		zap.String("Container", containerTaskInfo.ContainerID),
+		zap.String("Task", taskID.GetValue()),
+	)
+
+	code, err := e.Containerizer.ContainerWait(containerTaskInfo.ContainerID)
+	if err != nil {
+		logger.GetInstance().Error("Error while waiting for container to stop",
+			zap.String("Container", containerTaskInfo.ContainerID),
+			zap.String("Task", taskID.GetValue()),
+			zap.Error(err),
+		)
+
+		return e.throwError(taskID, err)
+	}
+
+	logger.GetInstance().Info("Container exited",
+		zap.Int("Code", code),
+		zap.String("Container", containerTaskInfo.ContainerID),
+		zap.String("Task", taskID.GetValue()),
+	)
+
+	err = e.tearDownTask(taskID, containerTaskInfo)
+	if err != nil {
+		return e.throwError(taskID, err)
+	}
+
+	message := fmt.Sprintf("Container exited (code %d)", code)
+	status := e.newStatus(taskID)
+	status.State = mesos.TASK_FINISHED.Enum()
+	status.Message = &message
+
+	return e.updateStatus(status)
 }
