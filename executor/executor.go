@@ -137,7 +137,7 @@ func NewExecutor(config Config, containerizer container.Containerizer, hookManag
 
 // Execute runs the executor workflow
 func (e *Executor) Execute() error {
-	for e.Shutdown == false {
+	for !e.Shutdown {
 		var err error
 		var resp mesos.Response
 
@@ -162,7 +162,7 @@ func (e *Executor) Execute() error {
 		}
 
 		// We are connected, we start to handle events
-		for e.Shutdown == false {
+		for !e.Shutdown {
 			var event executor.Event
 			decoder := encoding.Decoder(resp)
 			err = decoder.Decode(&event)
@@ -265,7 +265,8 @@ func (e *Executor) handleLaunch(ev *executor.Event) error {
 
 	// Initialize health checker for the current task and run checks
 	if task.HealthCheck != nil {
-		pid, err := e.Containerizer.ContainerGetPID(containerID)
+		var pid int
+		pid, err = e.Containerizer.ContainerGetPID(containerID)
 		if err != nil {
 			return e.throwError(task.GetTaskID(), err)
 		}
