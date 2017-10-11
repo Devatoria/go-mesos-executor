@@ -20,8 +20,7 @@ import (
 type IptablesTestSuite struct {
 	suite.Suite
 	c                  *types.FakeContainerizer
-	insertIptablesHook Hook
-	removeIptablesHook Hook
+	hook               Hook
 	hostNamespace      netns.NsHandle
 	isolatedNamespace  netns.NsHandle
 	iptablesDriver     *iptables.IPTables
@@ -33,9 +32,8 @@ type IptablesTestSuite struct {
 func (s *IptablesTestSuite) SetupTest() {
 	runtime.LockOSThread() // Lock thread to avoid namespace switching while testing
 
-	s.c = types.NewFakeContainerizer()        // Generate fake containerizer
-	s.insertIptablesHook = InsertIptablesHook // Retrieve InsertIptableHook
-	s.removeIptablesHook = RemoveIptablesHook // Retrieve InsertIptableHook
+	s.c = types.NewFakeContainerizer() // Generate fake containerizer
+	s.hook = IptablesHook
 	s.containerInterface = "docker0"
 	tcpProtocol := "tcp"
 	udpProtocol := "udp"
@@ -109,7 +107,7 @@ func (s *IptablesTestSuite) TearDownTest() {
 // Check that :
 // - hook does nothing if container is in host mode
 // - iptables are correctly injected on at hook execution
-func (s *IptablesTestSuite) TestInsertIptablesHookExecute() {
+func (s *IptablesTestSuite) TestIptablesHookRunPostRun() {
 	// Store the state of the namespace network
 	BaseForwardRule, _ := s.iptablesDriver.List("filter", "FORWARD")
 	BasePostRoutingRules, _ := s.iptablesDriver.List("nat", "POSTROUTING")
@@ -117,7 +115,7 @@ func (s *IptablesTestSuite) TestInsertIptablesHookExecute() {
 
 	// Injection should not be executed if the network is not in bridge mode
 	info := &types.ContainerTaskInfo{}
-	assert.Nil(s.T(), s.insertIptablesHook.Execute(s.c, info))
+	assert.Nil(s.T(), s.hook.RunPostRun(s.c, info))
 
 	forwardRules, _ := s.iptablesDriver.List("filter", "FORWARD")
 	postRoutingRules, _ := s.iptablesDriver.List("nat", "POSTROUTING")
@@ -143,7 +141,7 @@ func (s *IptablesTestSuite) TestInsertIptablesHookExecute() {
 
 	// Now test for each table and chain that rule are correctly inserted,
 	// next to the previous network states
-	assert.Nil(s.T(), s.insertIptablesHook.Execute(s.c, s.taskInfo))
+	assert.Nil(s.T(), s.hook.RunPostRun(s.c, s.taskInfo))
 	forwardRules, _ = s.iptablesDriver.List("filter", "FORWARD")
 	assert.Subset(
 		s.T(),
@@ -194,7 +192,7 @@ func (s *IptablesTestSuite) TestInsertIptablesHookExecute() {
 // Check that :
 // - hook does nothing when container is in host network
 // - iptables are correctly removed at task hook execution
-func (s *IptablesTestSuite) TestRemoveIptablesHookExecute() {
+func (s *IptablesTestSuite) TestIptablesHookRunPreStop() {
 	// Store the state of the namespace network
 	referenceForwardRule, _ := s.iptablesDriver.List("filter", "FORWARD")
 	referencePostRoutingRules, _ := s.iptablesDriver.List("nat", "POSTROUTING")
@@ -202,13 +200,13 @@ func (s *IptablesTestSuite) TestRemoveIptablesHookExecute() {
 
 	// Removing should not be executed if the network is not in bridge mode
 	info := &types.ContainerTaskInfo{}
-	assert.Nil(s.T(), s.removeIptablesHook.Execute(s.c, info))
+	assert.Nil(s.T(), s.hook.RunPreStop(s.c, info))
 
 	// Execute insert iptables hook to insert iptables
-	s.insertIptablesHook.Execute(s.c, s.taskInfo)
+	s.hook.RunPostRun(s.c, s.taskInfo)
 
 	// Execute remove iptables hook to remove inserted iptables
-	assert.Nil(s.T(), s.removeIptablesHook.Execute(s.c, s.taskInfo))
+	assert.Nil(s.T(), s.hook.RunPreStop(s.c, s.taskInfo))
 	forwardRules, _ := s.iptablesDriver.List("filter", "FORWARD")
 	postRoutingRules, _ := s.iptablesDriver.List("nat", "POSTROUTING")
 	preRoutingRules, _ := s.iptablesDriver.List("nat", "PREROUTING")

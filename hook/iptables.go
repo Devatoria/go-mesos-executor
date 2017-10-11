@@ -27,12 +27,12 @@ const (
 // removing iptables when containers is stopped and does not have an IP anymore.
 var iptablesHookContainerIPCache = sync.Map{}
 
-// InsertIptablesHook injects iptables rules on host. This iptables allow container masquerading
+// IptablesHook injects iptables rules on host. This iptables allow container masquerading
 // and network forwarding to container.
-var InsertIptablesHook = Hook{
-	Name:     "insertIptables",
+var IptablesHook = Hook{
+	Name:     "iptables",
 	Priority: 0,
-	Execute: func(c container.Containerizer, info *types.ContainerTaskInfo) error {
+	RunPostRun: func(c container.Containerizer, info *types.ContainerTaskInfo) error {
 		// Do not execute the hook if we are not on bridged network
 		if info.TaskInfo.GetContainer().GetDocker().GetNetwork() != mesos.ContainerInfo_DockerInfo_BRIDGE {
 			logger.GetInstance().Warn("Insert Iptables hook can't inject iptables rules if network mode is not bridged")
@@ -58,13 +58,7 @@ var InsertIptablesHook = Hook{
 
 		return generateIptables(containerIPs, portMappings, driver.Append, true)
 	},
-}
-
-// RemoveIptablesHook removes iptables injected by injectIptables hook.
-var RemoveIptablesHook = Hook{
-	Name:     "removeIptables",
-	Priority: 0,
-	Execute: func(c container.Containerizer, info *types.ContainerTaskInfo) error {
+	RunPreStop: func(c container.Containerizer, info *types.ContainerTaskInfo) error {
 		// Do not execute the hook if we are not on bridged network
 		if info.TaskInfo.GetContainer().GetDocker().GetNetwork() != mesos.ContainerInfo_DockerInfo_BRIDGE {
 			logger.GetInstance().Warn("Iptables hook does not need to remove iptables rules if network mode is not bridged")
