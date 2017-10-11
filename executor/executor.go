@@ -4,7 +4,10 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/Devatoria/go-mesos-executor/container"
@@ -44,6 +47,7 @@ type Executor struct {
 	HealthCheckersMutex *sync.RWMutex                             // Mutex used to protect health checkers map
 	HookManager         *hook.Manager                             // Hooks manager
 	Shutdown            bool                                      // Shutdown the executor (used to stop loop event and gently kill the executor)
+	StopSignals         chan os.Signal                            // Channel receiving stopping signals (SIGINT, SIGTERM, ...)
 	UnackedMutex        *sync.RWMutex                             // Mutex used to protect unacked tasks and updates maps
 	UnackedTasks        map[mesos.TaskID]mesos.TaskInfo           // Unacked tasks (waiting for an acknowledgment from the agent)
 	UnackedUpdates      map[string]executor.Call_Update           // Unacked updates (waiting for an acknowledgment from the agent)
@@ -116,6 +120,7 @@ func NewExecutor(config Config, containerizer container.Containerizer, hookManag
 		HealthCheckersMutex: &sync.RWMutex{},
 		HookManager:         hookManager,
 		Shutdown:            false,
+		StopSignals:         make(chan os.Signal),
 		UnackedMutex:        &sync.RWMutex{},
 		UnackedTasks:        make(map[mesos.TaskID]mesos.TaskInfo),
 		UnackedUpdates:      make(map[string]executor.Call_Update),
@@ -137,6 +142,14 @@ func NewExecutor(config Config, containerizer container.Containerizer, hookManag
 
 // Execute runs the executor workflow
 func (e *Executor) Execute() error {
+	// Handles stopping signals to gracefuly shutdown the executor
+	signal.Notify(e.StopSignals,
+		syscall.SIGHUP,
+		syscall.SIGINT,
+		syscall.SIGTERM,
+	)
+	go e.handleStopSignals()
+
 	for !e.Shutdown {
 		var err error
 		var resp mesos.Response
@@ -571,4 +584,13 @@ func (e *Executor) waitContainer(containerTaskInfo *types.ContainerTaskInfo, tas
 	status.Message = &message
 
 	return e.updateStatus(status)
+}
+
+// handleStopSignals handles stop signals such as SIGINT or SIGTERM
+func (e *Executor) handleStopSignals() {
+	sig := <-e.StopSignals
+	logger.GetInstance().Info("Received stop signals",
+		zap.String("signal", sig.String()),
+	)
+	e.handleShutdown(&executor.Event{})
 }
