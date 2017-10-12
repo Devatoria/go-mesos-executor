@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"reflect"
+	"syscall"
 	"testing"
 	"time"
 
@@ -562,6 +563,15 @@ func (s *ExecutorTestSuite) TestWaitContainer() {
 	assert.Nil(s.T(), s.executor.waitContainer(containerTaskInfo, taskID))                                     // Should be nil (container exited, waited successfuly)
 	assert.NotEmpty(s.T(), s.executor.UnackedUpdates)                                                          // Should not be empty (containing finished update)
 	assert.Equal(s.T(), *mesos.TASK_FINISHED.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_FINISHED update
+}
+
+// Check that a trapped signal triggers the shutdown of the executor
+func (s *ExecutorTestSuite) TestHandleStopSignals() {
+	go s.executor.handleStopSignals()
+	assert.False(s.T(), s.executor.Shutdown)
+	s.executor.StopSignals <- syscall.SIGHUP
+	assert.True(s.T(), s.executor.Shutdown)
+	s.executor.Shutdown = false
 }
 
 // Launch test suite
