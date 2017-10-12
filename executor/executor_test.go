@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/Devatoria/go-mesos-executor/container"
 	"github.com/Devatoria/go-mesos-executor/healthcheck"
@@ -278,6 +279,7 @@ func (s *ExecutorTestSuite) TestHandleLaunch() {
 	assert.Empty(s.T(), s.executor.UnackedUpdates)                                                            // Should be empty
 	close(done)                                                                                               // Simulate container exit
 	for len(s.executor.UnackedUpdates) == 0 {                                                                 // Wait for TASK_FINISHED update to be sent (async)
+		<-time.After(100 * time.Millisecond)
 	}
 	assert.Equal(s.T(), *mesos.TASK_FINISHED.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_FINISHED update
 }
