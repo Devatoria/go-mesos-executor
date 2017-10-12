@@ -301,16 +301,10 @@ func (s *ExecutorTestSuite) TestHandleKill() {
 		Kill: &evKill,
 	}
 
-	// Should throw an error on hook fail
-	s.executor.HookManager.RegisterHooks(s.errorHook)
-	assert.Error(s.T(), s.executor.handleKill(&ev))
-	assert.Equal(s.T(), *mesos.TASK_FAILED.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_FAILED update
-
 	// Nominal case
-	s.executor.HookManager.Hooks = []*hook.Hook{}
-	assert.Nil(s.T(), s.executor.handleKill(&ev))  // Should return nil (kill successful)
-	assert.Empty(s.T(), s.executor.ContainerTasks) // Should be empty (task removed from container tasks)
-
+	s.executor.HookManager.RegisterHooks(s.errorHook)
+	assert.Nil(s.T(), s.executor.handleKill(&ev))                                                            // Should return nil (kill successful, even with hook failure)
+	assert.Empty(s.T(), s.executor.ContainerTasks)                                                           // Should be empty (task removed from container tasks)
 	assert.NotEmpty(s.T(), s.executor.UnackedUpdates)                                                        // Should not be empty (TASK_KILLED update)
 	assert.Equal(s.T(), *mesos.TASK_KILLED.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_KILLED update
 }
@@ -336,16 +330,10 @@ func (s *ExecutorTestSuite) TestHandleShutdown() {
 	// Generating fake event
 	ev := executor.Event{}
 
-	// Should throw an error on hook fail
-	s.executor.HookManager.RegisterHooks(s.errorHook)
-	assert.Nil(s.T(), s.executor.handleShutdown(&ev))
-	assert.Equal(s.T(), *mesos.TASK_FAILED.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_FAILED update
-
 	// Nominal case
-	s.executor.HookManager.Hooks = []*hook.Hook{}
-	assert.Nil(s.T(), s.executor.handleShutdown(&ev)) // Should return nil (kill successful)
-	assert.Empty(s.T(), s.executor.ContainerTasks)    // Should be empty (tasks are removed one by one by teardown function)
-
+	s.executor.HookManager.RegisterHooks(s.errorHook)
+	assert.Nil(s.T(), s.executor.handleShutdown(&ev))                                                        // Should return nil (kill successful, even with hook failure)
+	assert.Empty(s.T(), s.executor.ContainerTasks)                                                           // Should be empty (tasks are removed one by one by teardown function)
 	assert.NotEmpty(s.T(), s.executor.UnackedUpdates)                                                        // Should not be empty (TASK_KILLED update)
 	assert.Equal(s.T(), *mesos.TASK_KILLED.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_KILLED update
 	assert.True(s.T(), s.executor.Shutdown)                                                                  // Should be set to true in order to stop main loops

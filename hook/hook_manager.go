@@ -100,30 +100,30 @@ func (m *Manager) RegisterHooks(hooks ...*Hook) error {
 
 // RunPreCreateHooks runs all pre-create hooks of the given manager
 func (m *Manager) RunPreCreateHooks(c container.Containerizer, info *types.ContainerTaskInfo) error {
-	return m.runHooks(preCreate, c, info)
+	return m.runHooks(preCreate, c, info, true)
 }
 
 // RunPreRunHooks runs all pre-create hooks of the given manager
 func (m *Manager) RunPreRunHooks(c container.Containerizer, info *types.ContainerTaskInfo) error {
-	return m.runHooks(preRun, c, info)
+	return m.runHooks(preRun, c, info, true)
 }
 
 // RunPostRunHooks runs all pre-create hooks of the given manager
 func (m *Manager) RunPostRunHooks(c container.Containerizer, info *types.ContainerTaskInfo) error {
-	return m.runHooks(postRun, c, info)
+	return m.runHooks(postRun, c, info, true)
 }
 
 // RunPreStopHooks runs all pre-create hooks of the given manager
 func (m *Manager) RunPreStopHooks(c container.Containerizer, info *types.ContainerTaskInfo) error {
-	return m.runHooks(preStop, c, info)
+	return m.runHooks(preStop, c, info, false)
 }
 
 // RunPostStopHooks runs all pre-create hooks of the given manager
 func (m *Manager) RunPostStopHooks(c container.Containerizer, info *types.ContainerTaskInfo) error {
-	return m.runHooks(postStop, c, info)
+	return m.runHooks(postStop, c, info, false)
 }
 
-func (m *Manager) runHooks(w when, c container.Containerizer, info *types.ContainerTaskInfo) error {
+func (m *Manager) runHooks(w when, c container.Containerizer, info *types.ContainerTaskInfo, exitOnError bool) error {
 	for _, hook := range m.Hooks {
 		logger.GetInstance().Info("Running a hook",
 			zap.String("hook", hook.Name),
@@ -169,7 +169,9 @@ func (m *Manager) runHooks(w when, c container.Containerizer, info *types.Contai
 		if err != nil {
 			logger.GetInstance().Error(fmt.Sprintf("%s %s hook has failed", w, hook.Name), zap.Error(err))
 
-			return err
+			if exitOnError {
+				return err
+			}
 		}
 	}
 

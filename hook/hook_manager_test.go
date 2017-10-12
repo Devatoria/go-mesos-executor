@@ -109,18 +109,18 @@ func (s *HookManagerTestSuite) TestPostRunHooks() {
 
 // Check that run fuction returns nil if hook executed well, or an error if not
 func (s *HookManagerTestSuite) TestPreStopHooks() {
-	s.manager.RegisterHooks(s.hook)                          // Register a working hook
-	assert.Nil(s.T(), s.manager.RunPreStopHooks(nil, nil))   // Ensure it doesn't throw an error on running
-	s.manager.RegisterHooks(s.errorHook)                     // Register a failing hook
-	assert.Error(s.T(), s.manager.RunPreStopHooks(nil, nil)) // Ensure it throws an error on running
+	s.manager.RegisterHooks(s.hook)                        // Register a working hook
+	assert.Nil(s.T(), s.manager.RunPreStopHooks(nil, nil)) // Ensure it doesn't throw an error on running
+	s.manager.RegisterHooks(s.errorHook)                   // Register a failing hook
+	assert.Nil(s.T(), s.manager.RunPreStopHooks(nil, nil)) // Ensure it doesn't throw an error on running
 }
 
 // Check that run fuction returns nil if hook executed well, or an error if not
 func (s *HookManagerTestSuite) TestPostStopHooks() {
-	s.manager.RegisterHooks(s.hook)                           // Register a working hook
-	assert.Nil(s.T(), s.manager.RunPostStopHooks(nil, nil))   // Ensure it doesn't throw an error on running
-	s.manager.RegisterHooks(s.errorHook)                      // Register a failing hook
-	assert.Error(s.T(), s.manager.RunPostStopHooks(nil, nil)) // Ensure it throws an error on running
+	s.manager.RegisterHooks(s.hook)                         // Register a working hook
+	assert.Nil(s.T(), s.manager.RunPostStopHooks(nil, nil)) // Ensure it doesn't throw an error on running
+	s.manager.RegisterHooks(s.errorHook)                    // Register a failing hook
+	assert.Nil(s.T(), s.manager.RunPostStopHooks(nil, nil)) // Ensure it doesn't throw an error on running
 }
 
 func TestHookManagerSuite(t *testing.T) {
