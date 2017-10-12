@@ -567,9 +567,12 @@ func (s *ExecutorTestSuite) TestWaitContainer() {
 
 // Check that a trapped signal triggers the shutdown of the executor
 func (s *ExecutorTestSuite) TestHandleStopSignals() {
-	go s.executor.handleStopSignals()
+	go func() {
+		s.executor.StopSignals <- syscall.SIGHUP
+	}()
+
 	assert.False(s.T(), s.executor.Shutdown)
-	s.executor.StopSignals <- syscall.SIGHUP
+	s.executor.handleStopSignals()
 	assert.True(s.T(), s.executor.Shutdown)
 	s.executor.Shutdown = false
 }
