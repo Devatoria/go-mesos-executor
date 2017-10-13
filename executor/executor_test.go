@@ -64,12 +64,17 @@ func (s *ExecutorTestSuite) SetupTest() {
 	s.containerizer = &types.FakeContainerizer{}
 
 	// Error hook
+	ferr := func(c container.Containerizer, info *types.ContainerTaskInfo) error {
+		return fmt.Errorf("An error")
+	}
 	s.errorHook = &hook.Hook{
-		Name:     "error",
-		Priority: 0,
-		Execute: func(c container.Containerizer, info *types.ContainerTaskInfo) error {
-			return fmt.Errorf("An error")
-		},
+		Name:         "error",
+		Priority:     0,
+		RunPreCreate: ferr,
+		RunPreRun:    ferr,
+		RunPostRun:   ferr,
+		RunPreStop:   ferr,
+		RunPostStop:  ferr,
 	}
 
 	// Hooks manager
@@ -251,25 +256,12 @@ func (s *ExecutorTestSuite) TestHandleLaunch() {
 	}
 
 	// Should return an error if a hook fails during launch
-	// Pre-create hook case
-	s.executor.HookManager.RegisterHooks("pre-create", s.errorHook)
-	assert.Error(s.T(), s.executor.handleLaunch(&ev))
-	assert.Equal(s.T(), *mesos.TASK_FAILED.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_FAILED update
-
-	// Pre-run hook case
-	s.executor.HookManager.PreCreateHooks = []*hook.Hook{}
-	s.executor.HookManager.RegisterHooks("pre-run", s.errorHook)
-	assert.Error(s.T(), s.executor.handleLaunch(&ev))
-	assert.Equal(s.T(), *mesos.TASK_FAILED.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_FAILED update
-
-	// Post-run hook case
-	s.executor.HookManager.PreRunHooks = []*hook.Hook{}
-	s.executor.HookManager.RegisterHooks("post-run", s.errorHook)
+	s.executor.HookManager.RegisterHooks(s.errorHook)
 	assert.Error(s.T(), s.executor.handleLaunch(&ev))
 	assert.Equal(s.T(), *mesos.TASK_FAILED.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_FAILED update
 
 	// Nominal case (long-running container)
-	s.executor.HookManager.PostRunHooks = []*hook.Hook{}                                                      // Remove previously added failing hooks
+	s.executor.HookManager.Hooks = []*hook.Hook{}                                                             // Remove previously added failing hooks
 	assert.Nil(s.T(), s.executor.handleLaunch(&ev))                                                           // Should return nil (launch successful)
 	assert.NotEmpty(s.T(), s.executor.UnackedTasks)                                                           // Should not be empty (task waiting for acknowledgment)
 	assert.NotEmpty(s.T(), s.executor.ContainerTasks)                                                         // Should not be empty (new running task for this container)
@@ -309,23 +301,10 @@ func (s *ExecutorTestSuite) TestHandleKill() {
 		Kill: &evKill,
 	}
 
-	// Should throw an error on hook fail
-	// Pre-stop hook case
-	s.executor.HookManager.RegisterHooks("pre-stop", s.errorHook)
-	assert.Error(s.T(), s.executor.handleKill(&ev))
-	assert.Equal(s.T(), *mesos.TASK_FAILED.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_FAILED update
-
-	// Post-stop hook case
-	s.executor.HookManager.PreStopHooks = []*hook.Hook{}
-	s.executor.HookManager.RegisterHooks("post-stop", s.errorHook)
-	assert.Error(s.T(), s.executor.handleKill(&ev))
-	assert.Equal(s.T(), *mesos.TASK_FAILED.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_FAILED update
-
 	// Nominal case
-	s.executor.HookManager.PostStopHooks = []*hook.Hook{}
-	assert.Nil(s.T(), s.executor.handleKill(&ev))  // Should return nil (kill successful)
-	assert.Empty(s.T(), s.executor.ContainerTasks) // Should be empty (task removed from container tasks)
-
+	s.executor.HookManager.RegisterHooks(s.errorHook)
+	assert.Nil(s.T(), s.executor.handleKill(&ev))                                                            // Should return nil (kill successful, even with hook failure)
+	assert.Empty(s.T(), s.executor.ContainerTasks)                                                           // Should be empty (task removed from container tasks)
 	assert.NotEmpty(s.T(), s.executor.UnackedUpdates)                                                        // Should not be empty (TASK_KILLED update)
 	assert.Equal(s.T(), *mesos.TASK_KILLED.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_KILLED update
 }
@@ -351,23 +330,10 @@ func (s *ExecutorTestSuite) TestHandleShutdown() {
 	// Generating fake event
 	ev := executor.Event{}
 
-	// Should throw an error on hook fail
-	// Pre-stop hook case
-	s.executor.HookManager.RegisterHooks("pre-stop", s.errorHook)
-	assert.Nil(s.T(), s.executor.handleShutdown(&ev))
-	assert.Equal(s.T(), *mesos.TASK_FAILED.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_FAILED update
-
-	// Post-stop hook case
-	s.executor.HookManager.PreStopHooks = []*hook.Hook{}
-	s.executor.HookManager.RegisterHooks("post-stop", s.errorHook)
-	assert.Nil(s.T(), s.executor.handleShutdown(&ev))
-	assert.Equal(s.T(), *mesos.TASK_FAILED.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_FAILED update
-
 	// Nominal case
-	s.executor.HookManager.PostStopHooks = []*hook.Hook{}
-	assert.Nil(s.T(), s.executor.handleShutdown(&ev)) // Should return nil (kill successful)
-	assert.Empty(s.T(), s.executor.ContainerTasks)    // Should be empty (tasks are removed one by one by teardown function)
-
+	s.executor.HookManager.RegisterHooks(s.errorHook)
+	assert.Nil(s.T(), s.executor.handleShutdown(&ev))                                                        // Should return nil (kill successful, even with hook failure)
+	assert.Empty(s.T(), s.executor.ContainerTasks)                                                           // Should be empty (tasks are removed one by one by teardown function)
 	assert.NotEmpty(s.T(), s.executor.UnackedUpdates)                                                        // Should not be empty (TASK_KILLED update)
 	assert.Equal(s.T(), *mesos.TASK_KILLED.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_KILLED update
 	assert.True(s.T(), s.executor.Shutdown)                                                                  // Should be set to true in order to stop main loops

@@ -25,7 +25,12 @@ This project uses the new (v1) Mesos HTTP API to communicate with the agent.
 
 ## Hooks system
 
-This executor implements a hook system, allowing you to run custom functions on `pre-create`, `pre-run`, `post-run`, `pre-stop` and `post-stop`. The `containerizer` and the task information are passed to hooks so you can interact with containers directly or even manipulate task data **before running the container** (eg. to sandbox mount path). All hooks are executed sequentially and synchronously, and an error in one hook make the executor to stop the running task (and send an error to the scheduler). Also, hooks are sorted by priority in descending order. It means that the hook with the highest number as priority will be executed first.
+This executor implements a hook system, allowing you to run custom functions on `pre-create`, `pre-run`, `post-run`, `pre-stop` and `post-stop`. The `containerizer` and the task information are passed to hooks so you can interact with containers directly or even manipulate task data **before running the container** (eg. to sandbox mount path). All hooks are executed sequentially and synchronously. On error, two behaviors are possible:
+
+* the error occurs on `pre-create`, `pre-run` or `post-run` and the error stops the executor workflow, throwing the error message with a `TASK_FAILED` update
+* the error occurs on `pre-stop` or `post-stop` and the error doesn't stop the executor workflow, so other hooks will be executed in order to avoid a teardown hook to do not be executed (would lead to leaks)
+
+Also, hooks are sorted by priority in descending order. It means that the hook with the highest number as priority will be executed first.
 
 You can take a look into the `hook` folder to view some examples.
 

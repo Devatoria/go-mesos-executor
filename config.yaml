@@ -2,8 +2,7 @@ debug: true # Enable debug mode (more logs)
 hooks: # Enabled hooks
   - acl
   - removeContainer
-  - insertIptables
-  - removeIptables
+  - iptables
 proc_path: /mnt/proc # Mount path of host proc folder
 iptables:
   container_bridge_interface: docker0 # Brigde interface for container network

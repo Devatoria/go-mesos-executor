@@ -27,7 +27,7 @@ const (
 var ACLHook = Hook{
 	Name:     "acl",
 	Priority: 0,
-	Execute: func(c container.Containerizer, info *types.ContainerTaskInfo) error {
+	RunPostRun: func(c container.Containerizer, info *types.ContainerTaskInfo) error {
 		// Do not execute the hook if we are not on bridged network
 		if info.TaskInfo.GetContainer().GetDocker().GetNetwork() != mesos.ContainerInfo_DockerInfo_BRIDGE {
 			logger.GetInstance().Warn("ACL hook can't inject iptables rules if network mode is not bridged")

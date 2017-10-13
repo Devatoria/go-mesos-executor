@@ -82,7 +82,7 @@ func (s *AclHookTestSuite) TearDownTest() {
 func (s *AclHookTestSuite) TestACLHookExecute() {
 	// Injection should not be executed if the network is not in bridge mode
 	info := &types.ContainerTaskInfo{}
-	assert.Nil(s.T(), s.hook.Execute(s.c, info))
+	assert.Nil(s.T(), s.hook.RunPostRun(s.c, info))
 	netns.Set(s.randomNamespace)
 	rules, _ := s.iptablesDriver.List("filter", "INPUT")
 	assert.Equal(s.T(), []string{
@@ -96,7 +96,7 @@ func (s *AclHookTestSuite) TestACLHookExecute() {
 			Network: mesos.ContainerInfo_DockerInfo_BRIDGE.Enum(),
 		},
 	}
-	assert.Nil(s.T(), s.hook.Execute(s.c, info))
+	assert.Nil(s.T(), s.hook.RunPostRun(s.c, info))
 	netns.Set(s.randomNamespace)
 	rules, _ = s.iptablesDriver.List("filter", "INPUT")
 	assert.Equal(s.T(), []string{
@@ -116,7 +116,7 @@ func (s *AclHookTestSuite) TestACLHookExecute() {
 			},
 		},
 	}
-	assert.Nil(s.T(), s.hook.Execute(s.c, info))
+	assert.Nil(s.T(), s.hook.RunPostRun(s.c, info))
 	netns.Set(s.randomNamespace)
 	rules, _ = s.iptablesDriver.List("filter", "INPUT")
 	assert.Equal(s.T(), []string{
@@ -131,7 +131,7 @@ func (s *AclHookTestSuite) TestACLHookExecute() {
 	// Injection should return an error if one of the given IP is invalid
 	labelValue := "8.8.8.8,invalidIP"
 	info.TaskInfo.Labels.Labels[0].Value = &labelValue
-	assert.Error(s.T(), s.hook.Execute(s.c, info))
+	assert.Error(s.T(), s.hook.RunPostRun(s.c, info))
 	netns.Set(s.randomNamespace)
 	rules, _ = s.iptablesDriver.List("filter", "INPUT")
 	assert.Equal(s.T(), []string{
@@ -142,7 +142,7 @@ func (s *AclHookTestSuite) TestACLHookExecute() {
 	// Injection should be okay, but no rules should have been
 	// added because no ports have been defined
 	labelValue = "8.8.8.8,10.0.0.0/24"
-	assert.Nil(s.T(), s.hook.Execute(s.c, info))
+	assert.Nil(s.T(), s.hook.RunPostRun(s.c, info))
 	netns.Set(s.randomNamespace)
 	rules, _ = s.iptablesDriver.List("filter", "INPUT")
 	assert.Equal(s.T(), []string{
@@ -163,7 +163,7 @@ func (s *AclHookTestSuite) TestACLHookExecute() {
 		},
 	}
 	s.iptablesDriver.ClearChain("filter", "INPUT")
-	assert.Nil(s.T(), s.hook.Execute(s.c, info))
+	assert.Nil(s.T(), s.hook.RunPostRun(s.c, info))
 	netns.Set(s.randomNamespace)
 	rules, _ = s.iptablesDriver.List("filter", "INPUT")
 	assert.Equal(s.T(), []string{
