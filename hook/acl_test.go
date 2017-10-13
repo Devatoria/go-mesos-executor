@@ -26,8 +26,6 @@ type AclHookTestSuite struct {
 }
 
 func (s *AclHookTestSuite) SetupTest() {
-	runtime.LockOSThread() // Lock thread to avoid namespace switching while testing
-
 	s.c = types.NewFakeContainerizer() // Generate fake containerizer
 	s.hook = ACLHook                   // Retrieve hook
 
@@ -80,9 +78,14 @@ func (s *AclHookTestSuite) TearDownTest() {
 // - an error if thrown if network namespace can't be retrieved
 // - all rules are well injected into network namespace
 func (s *AclHookTestSuite) TestACLHookExecute() {
+	// NOTE: please note that this lock must be done after EVERY
+	// call to hook run because hook unlock it after rule insertion!
+	runtime.LockOSThread()
+
 	// Injection should not be executed if the network is not in bridge mode
 	info := &types.ContainerTaskInfo{}
 	assert.Nil(s.T(), s.hook.RunPostRun(s.c, info))
+	runtime.LockOSThread()
 	netns.Set(s.randomNamespace)
 	rules, _ := s.iptablesDriver.List("filter", "INPUT")
 	assert.Equal(s.T(), []string{
@@ -97,6 +100,7 @@ func (s *AclHookTestSuite) TestACLHookExecute() {
 		},
 	}
 	assert.Nil(s.T(), s.hook.RunPostRun(s.c, info))
+	runtime.LockOSThread()
 	netns.Set(s.randomNamespace)
 	rules, _ = s.iptablesDriver.List("filter", "INPUT")
 	assert.Equal(s.T(), []string{
@@ -105,7 +109,7 @@ func (s *AclHookTestSuite) TestACLHookExecute() {
 		"-A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT", // Default related/established traffic allow rule
 		"-A INPUT -j DROP",                                        // Default DROP rule
 	}, rules)
-	s.iptablesDriver.ClearChain("filter", "INPUT")
+	assert.Nil(s.T(), s.iptablesDriver.ClearChain("filter", "INPUT"))
 	netns.Set(s.isolatedNamespace)
 
 	// Injection should be skipped if label has no value
@@ -117,6 +121,7 @@ func (s *AclHookTestSuite) TestACLHookExecute() {
 		},
 	}
 	assert.Nil(s.T(), s.hook.RunPostRun(s.c, info))
+	runtime.LockOSThread()
 	netns.Set(s.randomNamespace)
 	rules, _ = s.iptablesDriver.List("filter", "INPUT")
 	assert.Equal(s.T(), []string{
@@ -125,13 +130,14 @@ func (s *AclHookTestSuite) TestACLHookExecute() {
 		"-A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT", // Default related/established traffic allow rule
 		"-A INPUT -j DROP",                                        // Default DROP rule
 	}, rules)
-	s.iptablesDriver.ClearChain("filter", "INPUT")
+	assert.Nil(s.T(), s.iptablesDriver.ClearChain("filter", "INPUT"))
 	netns.Set(s.isolatedNamespace)
 
 	// Injection should return an error if one of the given IP is invalid
 	labelValue := "8.8.8.8,invalidIP"
 	info.TaskInfo.Labels.Labels[0].Value = &labelValue
 	assert.Error(s.T(), s.hook.RunPostRun(s.c, info))
+	runtime.LockOSThread()
 	netns.Set(s.randomNamespace)
 	rules, _ = s.iptablesDriver.List("filter", "INPUT")
 	assert.Equal(s.T(), []string{
@@ -143,6 +149,7 @@ func (s *AclHookTestSuite) TestACLHookExecute() {
 	// added because no ports have been defined
 	labelValue = "8.8.8.8,10.0.0.0/24"
 	assert.Nil(s.T(), s.hook.RunPostRun(s.c, info))
+	runtime.LockOSThread()
 	netns.Set(s.randomNamespace)
 	rules, _ = s.iptablesDriver.List("filter", "INPUT")
 	assert.Equal(s.T(), []string{
@@ -151,7 +158,7 @@ func (s *AclHookTestSuite) TestACLHookExecute() {
 		"-A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT", // Default related/established traffic allow rule
 		"-A INPUT -j DROP",                                        // Default DROP rule
 	}, rules)
-	s.iptablesDriver.ClearChain("filter", "INPUT")
+	assert.Nil(s.T(), s.iptablesDriver.ClearChain("filter", "INPUT"))
 	netns.Set(s.isolatedNamespace)
 
 	// Injection should be okay
@@ -162,8 +169,9 @@ func (s *AclHookTestSuite) TestACLHookExecute() {
 			Protocol:      &protocol,
 		},
 	}
-	s.iptablesDriver.ClearChain("filter", "INPUT")
+	assert.Nil(s.T(), s.iptablesDriver.ClearChain("filter", "INPUT"))
 	assert.Nil(s.T(), s.hook.RunPostRun(s.c, info))
+	runtime.LockOSThread()
 	netns.Set(s.randomNamespace)
 	rules, _ = s.iptablesDriver.List("filter", "INPUT")
 	assert.Equal(s.T(), []string{
@@ -185,6 +193,7 @@ func (s *AclHookTestSuite) TestInjectRuleIntoNamespace() {
 	assert.Error(s.T(), injectRuleIntoNamespace(s.randomNamespace, ""))                    // Try to inject a bad rule
 	assert.Nil(s.T(), injectRuleIntoNamespace(s.randomNamespace, "-s 10.0.0.1 -j ACCEPT")) // Try to inject a good rule
 
+	runtime.LockOSThread()                               // Lock thread to avoid namespace switching while testing
 	netns.Set(s.randomNamespace)                         // Enter random namespace
 	rules, _ := s.iptablesDriver.List("filter", "INPUT") // Retrieve chain rules
 	assert.Equal(s.T(), []string{
