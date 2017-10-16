@@ -34,23 +34,22 @@ const (
 
 // Executor represents an executor
 type Executor struct {
-	AgentInfo           mesos.AgentInfo                           // AgentInfo contains agent info returned by the agent
-	Cli                 *httpcli.Client                           // Cli is the mesos HTTP cli
-	ContainerTasks      map[mesos.TaskID]*types.ContainerTaskInfo // Running tasks
-	Containerizer       container.Containerizer                   // Containerize to use to manage containers
-	ExecutorID          string                                    // Executor ID returned by the agent when running the executor
-	ExecutorInfo        mesos.ExecutorInfo                        // Executor info returned by the agent after registration
-	FrameworkID         string                                    // Framework ID returned by the agent when running the executor
-	FrameworkInfo       mesos.FrameworkInfo                       // Framework info returned by the agent after registration
-	Handler             events.Handler                            // Handler to use to handle events
-	HealthCheckers      map[mesos.TaskID]*healthcheck.Checker     // Health checkers for Mesos native health checks (one per task)
-	HealthCheckersMutex *sync.RWMutex                             // Mutex used to protect health checkers map
-	HookManager         *hook.Manager                             // Hooks manager
-	Shutdown            bool                                      // Shutdown the executor (used to stop loop event and gently kill the executor)
-	StopSignals         chan os.Signal                            // Channel receiving stopping signals (SIGINT, SIGTERM, ...)
-	UnackedMutex        *sync.RWMutex                             // Mutex used to protect unacked tasks and updates maps
-	UnackedTasks        map[mesos.TaskID]mesos.TaskInfo           // Unacked tasks (waiting for an acknowledgment from the agent)
-	UnackedUpdates      map[string]executor.Call_Update           // Unacked updates (waiting for an acknowledgment from the agent)
+	AgentInfo      mesos.AgentInfo                           // AgentInfo contains agent info returned by the agent
+	Cli            *httpcli.Client                           // Cli is the mesos HTTP cli
+	ContainerTasks map[mesos.TaskID]*types.ContainerTaskInfo // Running tasks
+	Containerizer  container.Containerizer                   // Containerize to use to manage containers
+	ExecutorID     string                                    // Executor ID returned by the agent when running the executor
+	ExecutorInfo   mesos.ExecutorInfo                        // Executor info returned by the agent after registration
+	FrameworkID    string                                    // Framework ID returned by the agent when running the executor
+	FrameworkInfo  mesos.FrameworkInfo                       // Framework info returned by the agent after registration
+	Handler        events.Handler                            // Handler to use to handle events
+	HealthChecker  *healthcheck.Checker                      // Health checker for Mesos native health checks
+	HookManager    *hook.Manager                             // Hooks manager
+	Shutdown       bool                                      // Shutdown the executor (used to stop loop event and gently kill the executor)
+	StopSignals    chan os.Signal                            // Channel receiving stopping signals (SIGINT, SIGTERM, ...)
+	UnackedMutex   *sync.RWMutex                             // Mutex used to protect unacked tasks and updates maps
+	UnackedTasks   map[mesos.TaskID]mesos.TaskInfo           // Unacked tasks (waiting for an acknowledgment from the agent)
+	UnackedUpdates map[string]executor.Call_Update           // Unacked updates (waiting for an acknowledgment from the agent)
 }
 
 // Config represents an executor config, containing arguments passed by the
@@ -110,20 +109,18 @@ func NewExecutor(config Config, containerizer container.Containerizer, hookManag
 
 	// Prepare executor
 	e = &Executor{
-		Cli:                 cli,
-		ContainerTasks:      make(map[mesos.TaskID]*types.ContainerTaskInfo),
-		Containerizer:       containerizer,
-		ExecutorID:          config.ExecutorID,
-		FrameworkID:         config.FrameworkID,
-		FrameworkInfo:       mesos.FrameworkInfo{},
-		HealthCheckers:      make(map[mesos.TaskID]*healthcheck.Checker),
-		HealthCheckersMutex: &sync.RWMutex{},
-		HookManager:         hookManager,
-		Shutdown:            false,
-		StopSignals:         make(chan os.Signal),
-		UnackedMutex:        &sync.RWMutex{},
-		UnackedTasks:        make(map[mesos.TaskID]mesos.TaskInfo),
-		UnackedUpdates:      make(map[string]executor.Call_Update),
+		Cli:            cli,
+		ContainerTasks: make(map[mesos.TaskID]*types.ContainerTaskInfo),
+		Containerizer:  containerizer,
+		ExecutorID:     config.ExecutorID,
+		FrameworkID:    config.FrameworkID,
+		FrameworkInfo:  mesos.FrameworkInfo{},
+		HookManager:    hookManager,
+		Shutdown:       false,
+		StopSignals:    make(chan os.Signal),
+		UnackedMutex:   &sync.RWMutex{},
+		UnackedTasks:   make(map[mesos.TaskID]mesos.TaskInfo),
+		UnackedUpdates: make(map[string]executor.Call_Update),
 	}
 
 	// Add events handler
@@ -283,9 +280,7 @@ func (e *Executor) handleLaunch(ev *executor.Event) error {
 		if err != nil {
 			return e.throwError(task.GetTaskID(), err)
 		}
-		e.HealthCheckersMutex.Lock()
-		e.HealthCheckers[task.GetTaskID()] = healthcheck.NewChecker(pid, e.Containerizer, containerID, &task)
-		e.HealthCheckersMutex.Unlock()
+		e.HealthChecker = healthcheck.NewChecker(pid, e.Containerizer, containerID, &task)
 		go e.healthCheck(task.GetTaskID())
 	}
 
@@ -455,17 +450,12 @@ func (e *Executor) updateStatus(status mesos.TaskStatus) error {
 
 // healthCheck handles task health changes and update task status
 func (e *Executor) healthCheck(taskID mesos.TaskID) {
-	// Retrieve checker associated to the given task
-	e.HealthCheckersMutex.RLock()
-	hc := e.HealthCheckers[taskID]
-	e.HealthCheckersMutex.RUnlock()
-
 	// Run check
-	go hc.Run()
+	go e.HealthChecker.Run()
 	for {
 		select {
 		// Healthy state update
-		case healthy := <-hc.Healthy:
+		case healthy := <-e.HealthChecker.Healthy:
 			logger.GetInstance().Info("Task health has changed",
 				zap.Bool("healthy", healthy),
 			)
@@ -475,7 +465,7 @@ func (e *Executor) healthCheck(taskID mesos.TaskID) {
 			status.State = mesos.TASK_RUNNING.Enum()
 			e.updateStatus(status)
 		// Health checker has ended, we must kill the associated task
-		case <-hc.Done:
+		case <-e.HealthChecker.Done:
 			logger.GetInstance().Info("Health checker has ended, task is going to be killed")
 
 			e.handleKill(&executor.Event{
@@ -486,7 +476,7 @@ func (e *Executor) healthCheck(taskID mesos.TaskID) {
 
 			return
 		// Health checker has been stopped by the executor
-		case <-hc.Exited:
+		case <-e.HealthChecker.Exited:
 			logger.GetInstance().Info("Health checker has been removed, freeing...")
 
 			return
@@ -516,13 +506,9 @@ func (e *Executor) throwError(taskID mesos.TaskID, err error) error {
 // updating the task status
 func (e *Executor) tearDownTask(taskID mesos.TaskID, containerTaskInfo *types.ContainerTaskInfo) error {
 	// Quit and remove health checker (if existing)
-	e.HealthCheckersMutex.Lock()
-	if hc, ok := e.HealthCheckers[taskID]; ok {
-		hc.Quit <- struct{}{}
+	if e.HealthChecker != nil {
+		e.HealthChecker.Quit <- struct{}{}
 	}
-
-	delete(e.HealthCheckers, taskID)
-	e.HealthCheckersMutex.Unlock()
 
 	// Run pre-stop hooks
 	err := e.HookManager.RunPreStopHooks(e.Containerizer, containerTaskInfo)

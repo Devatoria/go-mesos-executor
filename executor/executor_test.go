@@ -433,14 +433,13 @@ func (s *ExecutorTestSuite) TestHealthCheck() {
 	defer monkey.UnpatchAll()
 
 	// Create fake checker for task
-	checker := healthcheck.NewChecker(0, nil, "", nil)
+	s.executor.HealthChecker = healthcheck.NewChecker(0, nil, "", nil)
 	taskID := mesos.TaskID{
 		Value: "fakeTaskID",
 	}
-	s.executor.HealthCheckers[taskID] = checker
 
 	// Health state update should update task status
-	monkey.PatchInstanceMethod(reflect.TypeOf(checker), "Run", func(c *healthcheck.Checker) {
+	monkey.PatchInstanceMethod(reflect.TypeOf(s.executor.HealthChecker), "Run", func(c *healthcheck.Checker) {
 		c.Healthy <- true      // Simulate health state update from checker
 		c.Exited <- struct{}{} // Simulate checker exit (in order to stop loop)
 	})
@@ -450,7 +449,7 @@ func (s *ExecutorTestSuite) TestHealthCheck() {
 	assert.Equal(s.T(), *mesos.TASK_RUNNING.Enum(), *update.Status.State)
 
 	// A done from the checker should kill the task
-	monkey.PatchInstanceMethod(reflect.TypeOf(checker), "Run", func(c *healthcheck.Checker) {
+	monkey.PatchInstanceMethod(reflect.TypeOf(s.executor.HealthChecker), "Run", func(c *healthcheck.Checker) {
 		c.Done <- struct{}{} // Simulate checker stop signal
 	})
 	s.executor.healthCheck(taskID)
@@ -459,15 +458,14 @@ func (s *ExecutorTestSuite) TestHealthCheck() {
 
 func (s *ExecutorTestSuite) TestTearDownTask() {
 	// Create fake checker for task
-	checker := healthcheck.NewChecker(0, nil, "", nil)
+	s.executor.HealthChecker = healthcheck.NewChecker(0, nil, "", nil)
 	taskID := mesos.TaskID{
 		Value: s.taskInfo.TaskID.Value,
 	}
-	s.executor.HealthCheckers[taskID] = checker
 
 	// Handle the fake checker exit (avoid deadlock)
 	go func() {
-		<-checker.Quit
+		<-s.executor.HealthChecker.Quit
 	}()
 
 	// Create a fake container task
@@ -500,12 +498,10 @@ func (s *ExecutorTestSuite) TestTearDownTask() {
 	})
 
 	// Nominal case
-	// - should stop and remove the checker
 	// - should execute the pre/post stop hooks
 	// - should stop the container
 	// - should remove the associated task
 	assert.Nil(s.T(), s.executor.tearDownTask(taskID, containerTaskInfo)) // Should be nil (no error)
-	assert.Empty(s.T(), s.executor.HealthCheckers)                        // Should be empty (no more checkers)
 	assert.True(s.T(), runPreStopHooksCalled)                             // Should be true (pre-stop hooks ran)
 	assert.True(s.T(), runContainerStop)                                  // Should be true (container should be stopped)
 	assert.True(s.T(), runPostStopHooksCalled)                            // Should be true (post-stop hooks ran)
