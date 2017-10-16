@@ -6,8 +6,8 @@ import (
 
 	"github.com/Devatoria/go-mesos-executor/container"
 	"github.com/Devatoria/go-mesos-executor/logger"
-	"github.com/Devatoria/go-mesos-executor/types"
 
+	"github.com/mesos/mesos-go/api/v1/lib"
 	"go.uber.org/zap"
 )
 
@@ -99,31 +99,31 @@ func (m *Manager) RegisterHooks(hooks ...*Hook) error {
 }
 
 // RunPreCreateHooks runs all pre-create hooks of the given manager
-func (m *Manager) RunPreCreateHooks(c container.Containerizer, info *types.ContainerTaskInfo) error {
-	return m.runHooks(preCreate, c, info, true)
+func (m *Manager) RunPreCreateHooks(c container.Containerizer, info *mesos.TaskInfo) error {
+	return m.runHooks(preCreate, c, info, "", true)
 }
 
 // RunPreRunHooks runs all pre-create hooks of the given manager
-func (m *Manager) RunPreRunHooks(c container.Containerizer, info *types.ContainerTaskInfo) error {
-	return m.runHooks(preRun, c, info, true)
+func (m *Manager) RunPreRunHooks(c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
+	return m.runHooks(preRun, c, info, containerID, true)
 }
 
 // RunPostRunHooks runs all pre-create hooks of the given manager
-func (m *Manager) RunPostRunHooks(c container.Containerizer, info *types.ContainerTaskInfo) error {
-	return m.runHooks(postRun, c, info, true)
+func (m *Manager) RunPostRunHooks(c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
+	return m.runHooks(postRun, c, info, containerID, true)
 }
 
 // RunPreStopHooks runs all pre-create hooks of the given manager
-func (m *Manager) RunPreStopHooks(c container.Containerizer, info *types.ContainerTaskInfo) error {
-	return m.runHooks(preStop, c, info, false)
+func (m *Manager) RunPreStopHooks(c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
+	return m.runHooks(preStop, c, info, containerID, false)
 }
 
 // RunPostStopHooks runs all pre-create hooks of the given manager
-func (m *Manager) RunPostStopHooks(c container.Containerizer, info *types.ContainerTaskInfo) error {
-	return m.runHooks(postStop, c, info, false)
+func (m *Manager) RunPostStopHooks(c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
+	return m.runHooks(postStop, c, info, containerID, false)
 }
 
-func (m *Manager) runHooks(w when, c container.Containerizer, info *types.ContainerTaskInfo, exitOnError bool) error {
+func (m *Manager) runHooks(w when, c container.Containerizer, info *mesos.TaskInfo, containerID string, exitOnError bool) error {
 	for _, hook := range m.Hooks {
 		logger.GetInstance().Info("Running a hook",
 			zap.String("hook", hook.Name),
@@ -143,25 +143,25 @@ func (m *Manager) runHooks(w when, c container.Containerizer, info *types.Contai
 				continue
 			}
 
-			err = hook.RunPreRun(c, info)
+			err = hook.RunPreRun(c, info, containerID)
 		case postRun:
 			if hook.RunPostRun == nil {
 				continue
 			}
 
-			err = hook.RunPostRun(c, info)
+			err = hook.RunPostRun(c, info, containerID)
 		case preStop:
 			if hook.RunPreStop == nil {
 				continue
 			}
 
-			err = hook.RunPreStop(c, info)
+			err = hook.RunPreStop(c, info, containerID)
 		case postStop:
 			if hook.RunPostStop == nil {
 				continue
 			}
 
-			err = hook.RunPostStop(c, info)
+			err = hook.RunPostStop(c, info, containerID)
 		default:
 			return fmt.Errorf("")
 		}

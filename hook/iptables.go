@@ -9,7 +9,6 @@ import (
 
 	"github.com/Devatoria/go-mesos-executor/container"
 	"github.com/Devatoria/go-mesos-executor/logger"
-	"github.com/Devatoria/go-mesos-executor/types"
 
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/mesos/mesos-go/api/v1/lib"
@@ -32,55 +31,55 @@ var iptablesHookContainerIPCache = sync.Map{}
 var IptablesHook = Hook{
 	Name:     "iptables",
 	Priority: 0,
-	RunPostRun: func(c container.Containerizer, info *types.ContainerTaskInfo) error {
+	RunPostRun: func(c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
 		// Do not execute the hook if we are not on bridged network
-		if info.TaskInfo.GetContainer().GetDocker().GetNetwork() != mesos.ContainerInfo_DockerInfo_BRIDGE {
+		if info.GetContainer().GetDocker().GetNetwork() != mesos.ContainerInfo_DockerInfo_BRIDGE {
 			logger.GetInstance().Warn("Insert Iptables hook can't inject iptables rules if network mode is not bridged")
 
 			return nil
 		}
 
-		logger.GetInstance().Debug(fmt.Sprintf("Inserting iptables on host namespace for container %s", info.ContainerID))
+		logger.GetInstance().Debug(fmt.Sprintf("Inserting iptables on host namespace for container %s", containerID))
 
 		driver, err := iptables.New()
 		if err != nil {
 			return err
 		}
 
-		portMappings := info.TaskInfo.GetContainer().GetDocker().GetPortMappings()
+		portMappings := info.GetContainer().GetDocker().GetPortMappings()
 
 		// Get container ip
-		containerIPs, err := c.ContainerGetIPs(info.ContainerID)
+		containerIPs, err := c.ContainerGetIPs(containerID)
 		if err != nil {
 			return err
 		}
-		iptablesHookContainerIPCache.Store(info.ContainerID, containerIPs)
+		iptablesHookContainerIPCache.Store(containerID, containerIPs)
 
 		return generateIptables(containerIPs, portMappings, driver.Append, true)
 	},
-	RunPreStop: func(c container.Containerizer, info *types.ContainerTaskInfo) error {
+	RunPreStop: func(c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
 		// Do not execute the hook if we are not on bridged network
-		if info.TaskInfo.GetContainer().GetDocker().GetNetwork() != mesos.ContainerInfo_DockerInfo_BRIDGE {
+		if info.GetContainer().GetDocker().GetNetwork() != mesos.ContainerInfo_DockerInfo_BRIDGE {
 			logger.GetInstance().Warn("Iptables hook does not need to remove iptables rules if network mode is not bridged")
 
 			return nil
 		}
 
-		logger.GetInstance().Debug(fmt.Sprintf("Removing iptables on host namespace for container %s", info.ContainerID))
+		logger.GetInstance().Debug(fmt.Sprintf("Removing iptables on host namespace for container %s", containerID))
 
 		driver, err := iptables.New()
 		if err != nil {
 			return err
 		}
 
-		portMappings := info.TaskInfo.GetContainer().GetDocker().GetPortMappings()
+		portMappings := info.GetContainer().GetDocker().GetPortMappings()
 
 		// Retrieve container IPs from cache
-		ipsCacheValue, ok := iptablesHookContainerIPCache.Load(info.ContainerID)
+		ipsCacheValue, ok := iptablesHookContainerIPCache.Load(containerID)
 		if !ok {
 			return fmt.Errorf(
 				"could not find ip in cache for container %s",
-				info.ContainerID,
+				containerID,
 			)
 		}
 
@@ -88,7 +87,7 @@ var IptablesHook = Hook{
 		if !ok {
 			return fmt.Errorf(
 				"could not load ip from cache for container %s",
-				info.ContainerID,
+				containerID,
 			)
 		}
 
