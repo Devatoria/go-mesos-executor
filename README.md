@@ -144,13 +144,6 @@ You can run tests using `make test`. Tests are using `testify` package to create
 
 ## TODO
 
-* [IMPROVEMENT] Allow a hook to don't stop executor when failing (and to continue to executor next hooks)
-* [IMPROVEMENT] Trap SIGKILL in order to gracefuly shutdown the executor
-* [IMPROVEMENT] Change hooks system to plugins system
-  * Some hooks work on several "when" (eg. post-run, pre-stop)
-  * Instead of creating 2 hooks for this, we could have a plugin system executing functions on needed "when", and then have only one plugin for one purpose (eg. iptables hooks could be one iptables plugin)
-* [FEATURE] Implement docker parameters
-  * Commands
 * [FEATURE] Add checkpointing support
 * [FEATURE] Return container error message when an error occurs during container run
 * [FEATURE] Add some useful hooks
