@@ -80,11 +80,13 @@ func (s *DockerContainerizerTestSuite) SetupTest() {
 	// Info
 	hostPath := "/data"
 	protocol := "tcp"
+	cmd := "echo hello"
 	s.info = Info{
 		CPUSharesLimit: 1024,
 		MemoryLimit:    512,
 		TaskInfo: mesos.TaskInfo{
 			Command: &mesos.CommandInfo{
+				Value: &cmd,
 				Environment: &mesos.Environment{
 					Variables: []mesos.Environment_Variable{
 						mesos.Environment_Variable{
@@ -167,18 +169,20 @@ func (s *DockerContainerizerTestSuite) TestDockerContainerCreate() {
 				HostPort string
 			}
 		}
+		Cmd []string
 	}
 
 	// Nominal case + request JSON tests
 	_, err := s.dc.ContainerCreate(s.info)
 	assert.Nil(s.T(), err) // Should be nil (everything is OK)
-	if err := json.Unmarshal(s.req.body, &result); err != nil {
+	if err = json.Unmarshal(s.req.body, &result); err != nil {
 		s.T().Fatal(err)
 	}
 
-	assert.Equal(s.T(), s.info.MemoryLimit, result.Memory)                                   // Should be equal to the task memory limit
-	assert.Equal(s.T(), s.info.CPUSharesLimit, result.CPUShares)                             // Should be equal to the task CPU shares limit
-	assert.Equal(s.T(), "host", result.HostConfig.NetworkMode)                               // Should be the string representation of the task network mode
+	assert.Equal(s.T(), s.info.MemoryLimit, result.Memory)       // Should be equal to the task memory limit
+	assert.Equal(s.T(), s.info.CPUSharesLimit, result.CPUShares) // Should be equal to the task CPU shares limit
+	assert.Equal(s.T(), "host", result.HostConfig.NetworkMode)
+	assert.Equal(s.T(), []string{"echo", "hello"}, result.Cmd)                               // Should be the string representation of the task network mode
 	assert.Equal(s.T(), []string{"foo=bar"}, result.Env)                                     // Should be formated as a list of "key=value" strings
 	assert.Equal(s.T(), []string{"/data:/usr/share/nginx/html:rw"}, result.HostConfig.Binds) // Should be formated as a list of "hostPath:containerPath:mode" strings
 
