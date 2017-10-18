@@ -94,18 +94,27 @@ func (c *DockerContainerizer) ContainerCreate(info Info) (string, error) {
 		binds = append(binds, bind)
 	}
 
+	// Create container config
+	containerConfig := &docker.Config{
+		CPUShares: int64(info.CPUSharesLimit),
+		Env:       stringifiedEnv,
+		Image:     info.TaskInfo.GetContainer().GetDocker().GetImage(),
+		Memory:    int64(info.MemoryLimit),
+	}
+
+	// Define cmd
+	cmdValue := info.TaskInfo.GetCommand().GetValue()
+	if len(cmdValue) > 0 {
+		containerConfig.Cmd = strings.Split(cmdValue, " ")
+	}
+
 	// Prepare container
 	logger.GetInstance().Debug("Creating a new container",
 		zap.String("networkMode", networkMode),
 		zap.Reflect("portsMappings", portsMappings),
 	)
 	container, err := c.Client.CreateContainer(docker.CreateContainerOptions{
-		Config: &docker.Config{
-			CPUShares: int64(info.CPUSharesLimit),
-			Env:       stringifiedEnv,
-			Image:     info.TaskInfo.GetContainer().GetDocker().GetImage(),
-			Memory:    int64(info.MemoryLimit),
-		},
+		Config: containerConfig,
 		HostConfig: &docker.HostConfig{
 			Binds:        binds,
 			NetworkMode:  networkMode,
