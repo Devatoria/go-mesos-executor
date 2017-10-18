@@ -83,8 +83,8 @@ func (s *AclHookTestSuite) TestACLHookExecute() {
 	runtime.LockOSThread()
 
 	// Injection should not be executed if the network is not in bridge mode
-	info := &types.ContainerTaskInfo{}
-	assert.Nil(s.T(), s.hook.RunPostRun(s.c, info))
+	info := &mesos.TaskInfo{}
+	assert.Nil(s.T(), s.hook.RunPostRun(s.c, info, ""))
 	runtime.LockOSThread()
 	netns.Set(s.randomNamespace)
 	rules, _ := s.iptablesDriver.List("filter", "INPUT")
@@ -94,12 +94,12 @@ func (s *AclHookTestSuite) TestACLHookExecute() {
 	netns.Set(s.isolatedNamespace)
 
 	// Injection should be skipped if label is not present
-	info.TaskInfo.Container = &mesos.ContainerInfo{
+	info.Container = &mesos.ContainerInfo{
 		Docker: &mesos.ContainerInfo_DockerInfo{
 			Network: mesos.ContainerInfo_DockerInfo_BRIDGE.Enum(),
 		},
 	}
-	assert.Nil(s.T(), s.hook.RunPostRun(s.c, info))
+	assert.Nil(s.T(), s.hook.RunPostRun(s.c, info, ""))
 	runtime.LockOSThread()
 	netns.Set(s.randomNamespace)
 	rules, _ = s.iptablesDriver.List("filter", "INPUT")
@@ -113,14 +113,14 @@ func (s *AclHookTestSuite) TestACLHookExecute() {
 	netns.Set(s.isolatedNamespace)
 
 	// Injection should be skipped if label has no value
-	info.TaskInfo.Labels = &mesos.Labels{
+	info.Labels = &mesos.Labels{
 		Labels: []mesos.Label{
 			mesos.Label{
 				Key: aclHookLabel,
 			},
 		},
 	}
-	assert.Nil(s.T(), s.hook.RunPostRun(s.c, info))
+	assert.Nil(s.T(), s.hook.RunPostRun(s.c, info, ""))
 	runtime.LockOSThread()
 	netns.Set(s.randomNamespace)
 	rules, _ = s.iptablesDriver.List("filter", "INPUT")
@@ -135,8 +135,8 @@ func (s *AclHookTestSuite) TestACLHookExecute() {
 
 	// Injection should return an error if one of the given IP is invalid
 	labelValue := "8.8.8.8,invalidIP"
-	info.TaskInfo.Labels.Labels[0].Value = &labelValue
-	assert.Error(s.T(), s.hook.RunPostRun(s.c, info))
+	info.Labels.Labels[0].Value = &labelValue
+	assert.Error(s.T(), s.hook.RunPostRun(s.c, info, ""))
 	runtime.LockOSThread()
 	netns.Set(s.randomNamespace)
 	rules, _ = s.iptablesDriver.List("filter", "INPUT")
@@ -148,7 +148,7 @@ func (s *AclHookTestSuite) TestACLHookExecute() {
 	// Injection should be okay, but no rules should have been
 	// added because no ports have been defined
 	labelValue = "8.8.8.8,10.0.0.0/24"
-	assert.Nil(s.T(), s.hook.RunPostRun(s.c, info))
+	assert.Nil(s.T(), s.hook.RunPostRun(s.c, info, ""))
 	runtime.LockOSThread()
 	netns.Set(s.randomNamespace)
 	rules, _ = s.iptablesDriver.List("filter", "INPUT")
@@ -163,14 +163,14 @@ func (s *AclHookTestSuite) TestACLHookExecute() {
 
 	// Injection should be okay
 	protocol := "tcp"
-	info.TaskInfo.Container.Docker.PortMappings = []mesos.ContainerInfo_DockerInfo_PortMapping{
+	info.Container.Docker.PortMappings = []mesos.ContainerInfo_DockerInfo_PortMapping{
 		mesos.ContainerInfo_DockerInfo_PortMapping{
 			ContainerPort: 80,
 			Protocol:      &protocol,
 		},
 	}
 	assert.Nil(s.T(), s.iptablesDriver.ClearChain("filter", "INPUT"))
-	assert.Nil(s.T(), s.hook.RunPostRun(s.c, info))
+	assert.Nil(s.T(), s.hook.RunPostRun(s.c, info, ""))
 	runtime.LockOSThread()
 	netns.Set(s.randomNamespace)
 	rules, _ = s.iptablesDriver.List("filter", "INPUT")

@@ -8,7 +8,6 @@ import (
 
 	"github.com/Devatoria/go-mesos-executor/container"
 	"github.com/Devatoria/go-mesos-executor/logger"
-	"github.com/Devatoria/go-mesos-executor/types"
 	"github.com/spf13/viper"
 
 	"github.com/coreos/go-iptables/iptables"
@@ -27,19 +26,19 @@ const (
 var ACLHook = Hook{
 	Name:     "acl",
 	Priority: 0,
-	RunPostRun: func(c container.Containerizer, info *types.ContainerTaskInfo) error {
+	RunPostRun: func(c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
 		// Do not execute the hook if we are not on bridged network
-		if info.TaskInfo.GetContainer().GetDocker().GetNetwork() != mesos.ContainerInfo_DockerInfo_BRIDGE {
+		if info.GetContainer().GetDocker().GetNetwork() != mesos.ContainerInfo_DockerInfo_BRIDGE {
 			logger.GetInstance().Warn("ACL hook can't inject iptables rules if network mode is not bridged")
 
 			return nil
 		}
 
 		// Get task container ports
-		portMappings := info.TaskInfo.GetContainer().GetDocker().GetPortMappings()
+		portMappings := info.GetContainer().GetDocker().GetPortMappings()
 
 		// Get container PID (to enter namespace)
-		pid, err := c.ContainerGetPID(info.ContainerID)
+		pid, err := c.ContainerGetPID(containerID)
 		if err != nil {
 			return fmt.Errorf("Unable to get the container PID: %v", err)
 		}
@@ -52,7 +51,7 @@ var ACLHook = Hook{
 		}
 		defer ns.Close()
 
-		for _, label := range info.TaskInfo.GetLabels().GetLabels() {
+		for _, label := range info.GetLabels().GetLabels() {
 			// Ignore labels we do not care about
 			if label.GetKey() != aclHookLabel {
 				continue

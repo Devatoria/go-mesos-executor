@@ -14,7 +14,6 @@ import (
 	"github.com/Devatoria/go-mesos-executor/healthcheck"
 	"github.com/Devatoria/go-mesos-executor/hook"
 	"github.com/Devatoria/go-mesos-executor/logger"
-	"github.com/Devatoria/go-mesos-executor/types"
 
 	"github.com/mesos/mesos-go/api/v1/lib"
 	"github.com/mesos/mesos-go/api/v1/lib/encoding"
@@ -34,23 +33,22 @@ const (
 
 // Executor represents an executor
 type Executor struct {
-	AgentInfo           mesos.AgentInfo                           // AgentInfo contains agent info returned by the agent
-	Cli                 *httpcli.Client                           // Cli is the mesos HTTP cli
-	ContainerTasks      map[mesos.TaskID]*types.ContainerTaskInfo // Running tasks
-	Containerizer       container.Containerizer                   // Containerize to use to manage containers
-	ExecutorID          string                                    // Executor ID returned by the agent when running the executor
-	ExecutorInfo        mesos.ExecutorInfo                        // Executor info returned by the agent after registration
-	FrameworkID         string                                    // Framework ID returned by the agent when running the executor
-	FrameworkInfo       mesos.FrameworkInfo                       // Framework info returned by the agent after registration
-	Handler             events.Handler                            // Handler to use to handle events
-	HealthCheckers      map[mesos.TaskID]*healthcheck.Checker     // Health checkers for Mesos native health checks (one per task)
-	HealthCheckersMutex *sync.RWMutex                             // Mutex used to protect health checkers map
-	HookManager         *hook.Manager                             // Hooks manager
-	Shutdown            bool                                      // Shutdown the executor (used to stop loop event and gently kill the executor)
-	StopSignals         chan os.Signal                            // Channel receiving stopping signals (SIGINT, SIGTERM, ...)
-	UnackedMutex        *sync.RWMutex                             // Mutex used to protect unacked tasks and updates maps
-	UnackedTasks        map[mesos.TaskID]mesos.TaskInfo           // Unacked tasks (waiting for an acknowledgment from the agent)
-	UnackedUpdates      map[string]executor.Call_Update           // Unacked updates (waiting for an acknowledgment from the agent)
+	AgentInfo      mesos.AgentInfo                 // AgentInfo contains agent info returned by the agent
+	Cli            *httpcli.Client                 // Cli is the mesos HTTP cli
+	ContainerID    string                          // Running container ID
+	Containerizer  container.Containerizer         // Containerize to use to manage containers
+	ExecutorID     string                          // Executor ID returned by the agent when running the executor
+	ExecutorInfo   mesos.ExecutorInfo              // Executor info returned by the agent after registration
+	FrameworkID    string                          // Framework ID returned by the agent when running the executor
+	FrameworkInfo  mesos.FrameworkInfo             // Framework info returned by the agent after registration
+	Handler        events.Handler                  // Handler to use to handle events
+	HealthChecker  *healthcheck.Checker            // Health checker for Mesos native health checks
+	HookManager    *hook.Manager                   // Hooks manager
+	Shutdown       bool                            // Shutdown the executor (used to stop loop event and gently kill the executor)
+	StopSignals    chan os.Signal                  // Channel receiving stopping signals (SIGINT, SIGTERM, ...)
+	TaskInfo       mesos.TaskInfo                  // Task info sent by the agent on launch event
+	UnackedMutex   *sync.RWMutex                   // Mutex used to protect unacked tasks and updates maps
+	UnackedUpdates map[string]executor.Call_Update // Unacked updates (waiting for an acknowledgment from the agent)
 }
 
 // Config represents an executor config, containing arguments passed by the
@@ -110,20 +108,16 @@ func NewExecutor(config Config, containerizer container.Containerizer, hookManag
 
 	// Prepare executor
 	e = &Executor{
-		Cli:                 cli,
-		ContainerTasks:      make(map[mesos.TaskID]*types.ContainerTaskInfo),
-		Containerizer:       containerizer,
-		ExecutorID:          config.ExecutorID,
-		FrameworkID:         config.FrameworkID,
-		FrameworkInfo:       mesos.FrameworkInfo{},
-		HealthCheckers:      make(map[mesos.TaskID]*healthcheck.Checker),
-		HealthCheckersMutex: &sync.RWMutex{},
-		HookManager:         hookManager,
-		Shutdown:            false,
-		StopSignals:         make(chan os.Signal),
-		UnackedMutex:        &sync.RWMutex{},
-		UnackedTasks:        make(map[mesos.TaskID]mesos.TaskInfo),
-		UnackedUpdates:      make(map[string]executor.Call_Update),
+		Cli:            cli,
+		Containerizer:  containerizer,
+		ExecutorID:     config.ExecutorID,
+		FrameworkID:    config.FrameworkID,
+		FrameworkInfo:  mesos.FrameworkInfo{},
+		HookManager:    hookManager,
+		Shutdown:       false,
+		StopSignals:    make(chan os.Signal),
+		UnackedMutex:   &sync.RWMutex{},
+		UnackedUpdates: make(map[string]executor.Call_Update),
 	}
 
 	// Add events handler
@@ -155,7 +149,7 @@ func (e *Executor) Execute() error {
 		var resp mesos.Response
 
 		// Prepare for subscribing
-		subscribe := calls.Subscribe(e.getUnackedTasks(), e.getUnackedUpdates()).With(
+		subscribe := calls.Subscribe(nil, e.getUnackedUpdates()).With(
 			calls.Executor(e.ExecutorID),
 			calls.Framework(e.FrameworkID),
 		)
@@ -209,96 +203,83 @@ func (e *Executor) handleSubscribed(ev *executor.Event) error {
 // handleLaunch puts given task in unacked tasks and launches it
 func (e *Executor) handleLaunch(ev *executor.Event) error {
 	logger.GetInstance().Info("Handled LAUNCH event")
-	task := ev.GetLaunch().GetTask()
-
-	// Lock mutex
-	e.UnackedMutex.Lock()
-	e.UnackedTasks[task.GetTaskID()] = task
-	e.UnackedMutex.Unlock()
+	e.TaskInfo = ev.GetLaunch().GetTask()
 
 	logger.GetInstance().Debug("Launching a task",
-		zap.Reflect("task", task),
+		zap.Reflect("task", e.TaskInfo),
 	)
 
 	// Get task resources
-	mem, err := getMemoryLimit(task)
+	mem, err := getMemoryLimit(e.TaskInfo)
 	if err != nil {
-		e.throwError(task.GetTaskID(), err)
+		e.throwError(err)
 
 		return err
 	}
 
-	cpuShares, err := getCPUSharesLimit(task)
+	cpuShares, err := getCPUSharesLimit(e.TaskInfo)
 	if err != nil {
-		return e.throwError(task.GetTaskID(), err)
+		return e.throwError(err)
 	}
 
 	// Create container info
 	info := container.Info{
 		CPUSharesLimit: cpuShares,
 		MemoryLimit:    mem,
-		TaskInfo:       task,
+		TaskInfo:       e.TaskInfo,
 	}
 
-	// Prepare container task info struct
-	e.ContainerTasks[task.TaskID] = &types.ContainerTaskInfo{
-		TaskInfo: task,
-	}
-
-	// Run pre-create hooks
-	err = e.HookManager.RunPreCreateHooks(e.Containerizer, e.ContainerTasks[task.TaskID])
+	err = e.HookManager.RunPreCreateHooks(e.Containerizer, &e.TaskInfo)
 	if err != nil {
-		return e.throwError(task.GetTaskID(), err)
+		return e.throwError(err)
 	}
 
 	// Create container
 	containerID, err := e.Containerizer.ContainerCreate(info)
 	if err != nil {
-		return e.throwError(task.GetTaskID(), err)
+		return e.throwError(err)
 	}
-	e.ContainerTasks[task.TaskID].ContainerID = containerID // Set container ID when created
+	e.ContainerID = containerID
 
 	// Run pre-run hooks
-	err = e.HookManager.RunPreRunHooks(e.Containerizer, e.ContainerTasks[task.TaskID])
+	err = e.HookManager.RunPreRunHooks(e.Containerizer, &e.TaskInfo, e.ContainerID)
 	if err != nil {
-		return e.throwError(task.GetTaskID(), err)
+		return e.throwError(err)
 	}
 
 	// Launch container
 	err = e.Containerizer.ContainerRun(containerID)
 	if err != nil {
-		return e.throwError(task.GetTaskID(), err)
+		return e.throwError(err)
 	}
 
 	// Run post-run hooks
-	err = e.HookManager.RunPostRunHooks(e.Containerizer, e.ContainerTasks[task.TaskID])
+	err = e.HookManager.RunPostRunHooks(e.Containerizer, &e.TaskInfo, e.ContainerID)
 	if err != nil {
-		return e.throwError(task.GetTaskID(), err)
+		return e.throwError(err)
 	}
 
 	// Initialize health checker for the current task and run checks
-	if task.HealthCheck != nil {
+	if e.TaskInfo.HealthCheck != nil {
 		var pid int
 		pid, err = e.Containerizer.ContainerGetPID(containerID)
 		if err != nil {
-			return e.throwError(task.GetTaskID(), err)
+			return e.throwError(err)
 		}
-		e.HealthCheckersMutex.Lock()
-		e.HealthCheckers[task.GetTaskID()] = healthcheck.NewChecker(pid, e.Containerizer, containerID, &task)
-		e.HealthCheckersMutex.Unlock()
-		go e.healthCheck(task.GetTaskID())
+		e.HealthChecker = healthcheck.NewChecker(pid, e.Containerizer, containerID, &e.TaskInfo)
+		go e.healthCheck()
 	}
 
 	// Update status to RUNNING
-	status := e.newStatus(task.GetTaskID())
+	status := e.newStatus()
 	status.State = mesos.TASK_RUNNING.Enum()
 	err = e.updateStatus(status)
 	if err != nil {
-		return e.throwError(task.GetTaskID(), err)
+		return e.throwError(err)
 	}
 
 	// Handle the container exit
-	go e.waitContainer(e.ContainerTasks[task.TaskID], task.GetTaskID())
+	go e.waitContainer()
 
 	return nil
 }
@@ -306,24 +287,13 @@ func (e *Executor) handleLaunch(ev *executor.Event) error {
 // handleKill kills given task and updates status
 func (e *Executor) handleKill(ev *executor.Event) error {
 	logger.GetInstance().Info("Handled KILL event")
-	taskID := ev.GetKill().GetTaskID()
 
-	// Get container ID associated to the given task
-	containerTaskInfo, ok := e.ContainerTasks[taskID]
-	if !ok {
-		logger.GetInstance().Warn("Error while killing the given task: task not found in running tasks",
-			zap.String("taskID", taskID.GetValue()),
-		)
-
-		return e.throwError(taskID, fmt.Errorf("%s task not found, unable to kill it", taskID.GetValue()))
-	}
-
-	err := e.tearDownTask(taskID, containerTaskInfo)
+	err := e.tearDown()
 	if err != nil {
-		return e.throwError(taskID, err)
+		return e.throwError(err)
 	}
 
-	status := e.newStatus(taskID)
+	status := e.newStatus()
 	status.State = mesos.TASK_KILLED.Enum()
 
 	return e.updateStatus(status)
@@ -338,7 +308,6 @@ func (e *Executor) handleAcknowledged(ev *executor.Event) error {
 	defer e.UnackedMutex.Unlock()
 
 	// Remove task/update from unacked
-	delete(e.UnackedTasks, ev.GetAcknowledged().GetTaskID())
 	delete(e.UnackedUpdates, string(ev.GetAcknowledged().GetUUID()))
 
 	return nil
@@ -358,20 +327,14 @@ func (e *Executor) handleShutdown(ev *executor.Event) error {
 	logger.GetInstance().Info("Handled SHUTDOWN event")
 
 	// Kill all tasks
-	for taskID, containerTaskInfo := range e.ContainerTasks {
-		logger.GetInstance().Info("Killing task",
-			zap.String("taskID", taskID.GetValue()),
-		)
-
-		err := e.tearDownTask(taskID, containerTaskInfo)
-		if err != nil {
-			e.throwError(taskID, err)
-		}
-
-		status := e.newStatus(taskID)
-		status.State = mesos.TASK_KILLED.Enum()
-		e.updateStatus(status)
+	err := e.tearDown()
+	if err != nil {
+		e.throwError(err)
 	}
+
+	status := e.newStatus()
+	status.State = mesos.TASK_KILLED.Enum()
+	e.updateStatus(status)
 
 	// Shutdown
 	e.Shutdown = true
@@ -384,21 +347,6 @@ func (e *Executor) handleError(ev *executor.Event) error {
 	logger.GetInstance().Info("Handled ERROR event")
 
 	return fmt.Errorf("%s", ev.GetError().GetMessage())
-}
-
-// getUnackedTasks returns a slice of unacked tasks
-func (e *Executor) getUnackedTasks() []mesos.TaskInfo {
-	// Lock mutex
-	e.UnackedMutex.RLock()
-	defer e.UnackedMutex.RUnlock()
-
-	// Loop on unacked tasks
-	var tasks []mesos.TaskInfo
-	for _, task := range e.UnackedTasks {
-		tasks = append(tasks, task)
-	}
-
-	return tasks
 }
 
 // getUnackedUpdates returns a slice of unacked updates
@@ -417,11 +365,11 @@ func (e *Executor) getUnackedUpdates() []executor.Call_Update {
 }
 
 // newStatus returns a mesos task status generated for the given executor and task ID
-func (e *Executor) newStatus(taskID mesos.TaskID) mesos.TaskStatus {
+func (e *Executor) newStatus() mesos.TaskStatus {
 	return mesos.TaskStatus{
 		ExecutorID: &e.ExecutorInfo.ExecutorID,
 		Source:     mesos.SOURCE_EXECUTOR.Enum(),
-		TaskID:     taskID,
+		TaskID:     e.TaskInfo.GetTaskID(),
 		UUID:       []byte(uuid.NewRandom()),
 	}
 }
@@ -454,39 +402,30 @@ func (e *Executor) updateStatus(status mesos.TaskStatus) error {
 }
 
 // healthCheck handles task health changes and update task status
-func (e *Executor) healthCheck(taskID mesos.TaskID) {
-	// Retrieve checker associated to the given task
-	e.HealthCheckersMutex.RLock()
-	hc := e.HealthCheckers[taskID]
-	e.HealthCheckersMutex.RUnlock()
-
+func (e *Executor) healthCheck() {
 	// Run check
-	go hc.Run()
+	go e.HealthChecker.Run()
 	for {
 		select {
 		// Healthy state update
-		case healthy := <-hc.Healthy:
+		case healthy := <-e.HealthChecker.Healthy:
 			logger.GetInstance().Info("Task health has changed",
 				zap.Bool("healthy", healthy),
 			)
 
-			status := e.newStatus(taskID)
+			status := e.newStatus()
 			status.Healthy = &healthy
 			status.State = mesos.TASK_RUNNING.Enum()
 			e.updateStatus(status)
 		// Health checker has ended, we must kill the associated task
-		case <-hc.Done:
+		case <-e.HealthChecker.Done:
 			logger.GetInstance().Info("Health checker has ended, task is going to be killed")
 
-			e.handleKill(&executor.Event{
-				Kill: &executor.Event_Kill{
-					TaskID: taskID,
-				},
-			})
+			e.handleKill(nil)
 
 			return
 		// Health checker has been stopped by the executor
-		case <-hc.Exited:
+		case <-e.HealthChecker.Exited:
 			logger.GetInstance().Info("Health checker has been removed, freeing...")
 
 			return
@@ -498,12 +437,12 @@ func (e *Executor) healthCheck(taskID mesos.TaskID) {
 // the given error as a message of the update, so the scheduler will be able
 // to display it to user, and finally return the error to allow the core
 // to handle it and throw it to main command
-func (e *Executor) throwError(taskID mesos.TaskID, err error) error {
+func (e *Executor) throwError(err error) error {
 	// Wrap error message into task status update and send it
 	// Do not check the error on update until this throw is done just before exiting
 	// executor core (we can't do anything)
 	message := fmt.Sprintf("Executor error: %v", err)
-	status := e.newStatus(taskID)
+	status := e.newStatus()
 	status.State = mesos.TASK_FAILED.Enum()
 	status.Message = &message
 
@@ -512,74 +451,64 @@ func (e *Executor) throwError(taskID mesos.TaskID, err error) error {
 	return err
 }
 
-// tearDownTask kills the given task, running hooks and stopping associated container before
+// tearDown kills the executor task, running hooks and stopping associated container before
 // updating the task status
-func (e *Executor) tearDownTask(taskID mesos.TaskID, containerTaskInfo *types.ContainerTaskInfo) error {
+func (e *Executor) tearDown() error {
 	// Quit and remove health checker (if existing)
-	e.HealthCheckersMutex.Lock()
-	if hc, ok := e.HealthCheckers[taskID]; ok {
-		hc.Quit <- struct{}{}
+	if e.HealthChecker != nil {
+		e.HealthChecker.Quit <- struct{}{}
 	}
 
-	delete(e.HealthCheckers, taskID)
-	e.HealthCheckersMutex.Unlock()
-
 	// Run pre-stop hooks
-	err := e.HookManager.RunPreStopHooks(e.Containerizer, containerTaskInfo)
+	err := e.HookManager.RunPreStopHooks(e.Containerizer, &e.TaskInfo, e.ContainerID)
 	if err != nil {
 		return err
 	}
 
 	// Stop container
-	err = e.Containerizer.ContainerStop(containerTaskInfo.ContainerID)
+	err = e.Containerizer.ContainerStop(e.ContainerID)
 	if err != nil {
 		return err
 	}
 
 	// Run post-stop hooks
-	err = e.HookManager.RunPostStopHooks(e.Containerizer, containerTaskInfo)
-	if err != nil {
-		return err
-	}
+	err = e.HookManager.RunPostStopHooks(e.Containerizer, &e.TaskInfo, e.ContainerID)
 
-	// Remove it from tasks
-	delete(e.ContainerTasks, taskID)
-
-	return nil
+	return err
 }
 
-// waitContainer waits for the given container to stop,
+// waitContainer waits for the executor container to stop,
 // making the associated task to teardown
-func (e *Executor) waitContainer(containerTaskInfo *types.ContainerTaskInfo, taskID mesos.TaskID) error {
+func (e *Executor) waitContainer() error {
 	logger.GetInstance().Info("Waiting for container to finish",
-		zap.String("Container", containerTaskInfo.ContainerID),
-		zap.String("Task", taskID.GetValue()),
+		zap.String("Container", e.ContainerID),
+		zap.String("Task", e.TaskInfo.TaskID.GetValue()),
 	)
 
-	code, err := e.Containerizer.ContainerWait(containerTaskInfo.ContainerID)
+	code, err := e.Containerizer.ContainerWait(e.ContainerID)
 	if err != nil {
 		logger.GetInstance().Error("Error while waiting for container to stop",
-			zap.String("Container", containerTaskInfo.ContainerID),
-			zap.String("Task", taskID.GetValue()),
+			zap.String("Container", e.ContainerID),
+			zap.String("Task", e.TaskInfo.TaskID.GetValue()),
 			zap.Error(err),
 		)
 
-		return e.throwError(taskID, err)
+		return e.throwError(err)
 	}
 
 	logger.GetInstance().Info("Container exited",
 		zap.Int("Code", code),
-		zap.String("Container", containerTaskInfo.ContainerID),
-		zap.String("Task", taskID.GetValue()),
+		zap.String("Container", e.ContainerID),
+		zap.String("Task", e.TaskInfo.TaskID.GetValue()),
 	)
 
-	err = e.tearDownTask(taskID, containerTaskInfo)
+	err = e.tearDown()
 	if err != nil {
-		return e.throwError(taskID, err)
+		return e.throwError(err)
 	}
 
 	message := fmt.Sprintf("Container exited (code %d)", code)
-	status := e.newStatus(taskID)
+	status := e.newStatus()
 	status.State = mesos.TASK_FINISHED.Enum()
 	status.Message = &message
 

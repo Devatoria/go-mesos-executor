@@ -3,8 +3,8 @@ package hook
 import (
 	"github.com/Devatoria/go-mesos-executor/container"
 	"github.com/Devatoria/go-mesos-executor/logger"
-	"github.com/Devatoria/go-mesos-executor/types"
 
+	"github.com/mesos/mesos-go/api/v1/lib"
 	"go.uber.org/zap"
 )
 
@@ -12,11 +12,11 @@ import (
 var RemoveContainerHook = Hook{
 	Name:     "removeContainer",
 	Priority: 0,
-	RunPostStop: func(c container.Containerizer, info *types.ContainerTaskInfo) error {
+	RunPostStop: func(c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
 		logger.GetInstance().Info("Removing container",
-			zap.String("containerID", info.ContainerID),
+			zap.String("containerID", containerID),
 		)
 
-		return c.ContainerRemove(info.ContainerID)
+		return c.ContainerRemove(containerID)
 	},
 }

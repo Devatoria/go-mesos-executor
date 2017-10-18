@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/Devatoria/go-mesos-executor/container"
-	"github.com/Devatoria/go-mesos-executor/types"
 
+	"github.com/mesos/mesos-go/api/v1/lib"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
@@ -22,39 +22,47 @@ type HookManagerTestSuite struct {
 
 func (s *HookManagerTestSuite) SetupTest() {
 	s.manager = NewManager([]string{"sampleHook", "errorHook", "priorityHook"})
-	fnil := func(c container.Containerizer, info *types.ContainerTaskInfo) error {
+	fnil := func(c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
 		return nil
 	}
-	ferr := func(c container.Containerizer, info *types.ContainerTaskInfo) error {
+	ferr := func(c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
 		return fmt.Errorf("an error")
 	}
 	s.hook = &Hook{
-		Name:         "sampleHook",
-		Priority:     0,
-		RunPreCreate: fnil,
-		RunPreRun:    fnil,
-		RunPostRun:   fnil,
-		RunPreStop:   fnil,
-		RunPostStop:  fnil,
+		Name:     "sampleHook",
+		Priority: 0,
+		RunPreCreate: func(c container.Containerizer, info *mesos.TaskInfo) error {
+			return nil
+		},
+		RunPreRun:   fnil,
+		RunPostRun:  fnil,
+		RunPreStop:  fnil,
+		RunPostStop: fnil,
 	}
 	s.errorHook = &Hook{
-		Name:         "errorHook",
-		Priority:     0,
-		RunPreCreate: ferr,
-		RunPreRun:    ferr,
-		RunPostRun:   ferr,
-		RunPreStop:   ferr,
-		RunPostStop:  ferr,
+		Name:     "errorHook",
+		Priority: 0,
+		RunPreCreate: func(c container.Containerizer, info *mesos.TaskInfo) error {
+			return fmt.Errorf("an error")
+		},
+		RunPreRun:   ferr,
+		RunPostRun:  ferr,
+		RunPreStop:  ferr,
+		RunPostStop: ferr,
 	}
 	s.disabledHook = &Hook{
-		Name:         "disabledHook",
-		Priority:     0,
-		RunPreCreate: fnil,
+		Name:     "disabledHook",
+		Priority: 0,
+		RunPreCreate: func(c container.Containerizer, info *mesos.TaskInfo) error {
+			return nil
+		},
 	}
 	s.priorityHook = &Hook{
-		Name:         "priorityHook",
-		Priority:     100,
-		RunPreCreate: fnil,
+		Name:     "priorityHook",
+		Priority: 100,
+		RunPreCreate: func(c container.Containerizer, info *mesos.TaskInfo) error {
+			return nil
+		},
 	}
 }
 
@@ -93,34 +101,34 @@ func (s *HookManagerTestSuite) TestPreCreateHooks() {
 
 // Check that run fuction returns nil if hook executed well, or an error if not
 func (s *HookManagerTestSuite) TestPreRunHooks() {
-	s.manager.RegisterHooks(s.hook)                         // Register a working hook
-	assert.Nil(s.T(), s.manager.RunPreRunHooks(nil, nil))   // Ensure it doesn't throw an error on running
-	s.manager.RegisterHooks(s.errorHook)                    // Register a failing hook
-	assert.Error(s.T(), s.manager.RunPreRunHooks(nil, nil)) // Ensure it throws an error on running
+	s.manager.RegisterHooks(s.hook)                             // Register a working hook
+	assert.Nil(s.T(), s.manager.RunPreRunHooks(nil, nil, ""))   // Ensure it doesn't throw an error on running
+	s.manager.RegisterHooks(s.errorHook)                        // Register a failing hook
+	assert.Error(s.T(), s.manager.RunPreRunHooks(nil, nil, "")) // Ensure it throws an error on running
 }
 
 // Check that run fuction returns nil if hook executed well, or an error if not
 func (s *HookManagerTestSuite) TestPostRunHooks() {
-	s.manager.RegisterHooks(s.hook)                          // Register a working hook
-	assert.Nil(s.T(), s.manager.RunPostRunHooks(nil, nil))   // Ensure it doesn't throw an error on running
-	s.manager.RegisterHooks(s.errorHook)                     // Register a failing hook
-	assert.Error(s.T(), s.manager.RunPostRunHooks(nil, nil)) // Ensure it throws an error on running
+	s.manager.RegisterHooks(s.hook)                              // Register a working hook
+	assert.Nil(s.T(), s.manager.RunPostRunHooks(nil, nil, ""))   // Ensure it doesn't throw an error on running
+	s.manager.RegisterHooks(s.errorHook)                         // Register a failing hook
+	assert.Error(s.T(), s.manager.RunPostRunHooks(nil, nil, "")) // Ensure it throws an error on running
 }
 
 // Check that run fuction returns nil if hook executed well, or an error if not
 func (s *HookManagerTestSuite) TestPreStopHooks() {
-	s.manager.RegisterHooks(s.hook)                        // Register a working hook
-	assert.Nil(s.T(), s.manager.RunPreStopHooks(nil, nil)) // Ensure it doesn't throw an error on running
-	s.manager.RegisterHooks(s.errorHook)                   // Register a failing hook
-	assert.Nil(s.T(), s.manager.RunPreStopHooks(nil, nil)) // Ensure it doesn't throw an error on running
+	s.manager.RegisterHooks(s.hook)                            // Register a working hook
+	assert.Nil(s.T(), s.manager.RunPreStopHooks(nil, nil, "")) // Ensure it doesn't throw an error on running
+	s.manager.RegisterHooks(s.errorHook)                       // Register a failing hook
+	assert.Nil(s.T(), s.manager.RunPreStopHooks(nil, nil, "")) // Ensure it doesn't throw an error on running
 }
 
 // Check that run fuction returns nil if hook executed well, or an error if not
 func (s *HookManagerTestSuite) TestPostStopHooks() {
-	s.manager.RegisterHooks(s.hook)                         // Register a working hook
-	assert.Nil(s.T(), s.manager.RunPostStopHooks(nil, nil)) // Ensure it doesn't throw an error on running
-	s.manager.RegisterHooks(s.errorHook)                    // Register a failing hook
-	assert.Nil(s.T(), s.manager.RunPostStopHooks(nil, nil)) // Ensure it doesn't throw an error on running
+	s.manager.RegisterHooks(s.hook)                             // Register a working hook
+	assert.Nil(s.T(), s.manager.RunPostStopHooks(nil, nil, "")) // Ensure it doesn't throw an error on running
+	s.manager.RegisterHooks(s.errorHook)                        // Register a failing hook
+	assert.Nil(s.T(), s.manager.RunPostStopHooks(nil, nil, "")) // Ensure it doesn't throw an error on running
 }
 
 func TestHookManagerSuite(t *testing.T) {
