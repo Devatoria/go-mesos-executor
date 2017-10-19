@@ -212,9 +212,7 @@ func (e *Executor) handleLaunch(ev *executor.Event) error {
 	// Get task resources
 	mem, err := getMemoryLimit(e.TaskInfo)
 	if err != nil {
-		e.throwError(err)
-
-		return err
+		return e.throwError(err)
 	}
 
 	cpuShares, err := getCPUSharesLimit(e.TaskInfo)
@@ -288,11 +286,8 @@ func (e *Executor) handleLaunch(ev *executor.Event) error {
 func (e *Executor) handleKill(ev *executor.Event) error {
 	logger.GetInstance().Info("Handled KILL event")
 
-	err := e.tearDown()
-	if err != nil {
-		return e.throwError(err)
-	}
-
+	e.Shutdown = true
+	e.tearDown()
 	status := e.newStatus()
 	status.State = mesos.TASK_KILLED.Enum()
 
@@ -326,20 +321,7 @@ func (e *Executor) handleMessage(ev *executor.Event) error {
 func (e *Executor) handleShutdown(ev *executor.Event) error {
 	logger.GetInstance().Info("Handled SHUTDOWN event")
 
-	// Kill all tasks
-	err := e.tearDown()
-	if err != nil {
-		e.throwError(err)
-	}
-
-	status := e.newStatus()
-	status.State = mesos.TASK_KILLED.Enum()
-	e.updateStatus(status)
-
-	// Shutdown
-	e.Shutdown = true
-
-	return nil
+	return e.handleKill(nil)
 }
 
 // handleError returns an error returned by the agent
@@ -438,10 +420,12 @@ func (e *Executor) healthCheck() {
 // to display it to user, and finally return the error to allow the core
 // to handle it and throw it to main command
 func (e *Executor) throwError(err error) error {
+	e.tearDown()
+
 	// Wrap error message into task status update and send it
 	// Do not check the error on update until this throw is done just before exiting
 	// executor core (we can't do anything)
-	message := fmt.Sprintf("Executor error: %v", err)
+	message := err.Error()
 	status := e.newStatus()
 	status.State = mesos.TASK_FAILED.Enum()
 	status.Message = &message
@@ -451,30 +435,16 @@ func (e *Executor) throwError(err error) error {
 	return err
 }
 
-// tearDown kills the executor task, running hooks and stopping associated container before
-// updating the task status
-func (e *Executor) tearDown() error {
+// tearDown kills the executor task, running hooks and stopping associated container
+func (e *Executor) tearDown() {
 	// Quit and remove health checker (if existing)
 	if e.HealthChecker != nil {
 		e.HealthChecker.Quit <- struct{}{}
 	}
 
-	// Run pre-stop hooks
-	err := e.HookManager.RunPreStopHooks(e.Containerizer, &e.TaskInfo, e.ContainerID)
-	if err != nil {
-		return err
-	}
-
-	// Stop container
-	err = e.Containerizer.ContainerStop(e.ContainerID)
-	if err != nil {
-		return err
-	}
-
-	// Run post-stop hooks
-	err = e.HookManager.RunPostStopHooks(e.Containerizer, &e.TaskInfo, e.ContainerID)
-
-	return err
+	e.HookManager.RunPreStopHooks(e.Containerizer, &e.TaskInfo, e.ContainerID)
+	e.Containerizer.ContainerStop(e.ContainerID)
+	e.HookManager.RunPostStopHooks(e.Containerizer, &e.TaskInfo, e.ContainerID)
 }
 
 // waitContainer waits for the executor container to stop,
@@ -502,15 +472,13 @@ func (e *Executor) waitContainer() error {
 		zap.String("Task", e.TaskInfo.TaskID.GetValue()),
 	)
 
-	err = e.tearDown()
-	if err != nil {
-		return e.throwError(err)
+	if code != 0 {
+		return e.throwError(fmt.Errorf("Container exited (code %d)", code))
 	}
 
-	message := fmt.Sprintf("Container exited (code %d)", code)
+	e.tearDown()
 	status := e.newStatus()
 	status.State = mesos.TASK_FINISHED.Enum()
-	status.Message = &message
 
 	return e.updateStatus(status)
 }
@@ -521,5 +489,6 @@ func (e *Executor) handleStopSignals() {
 	logger.GetInstance().Info("Received stop signals",
 		zap.String("signal", sig.String()),
 	)
-	e.handleShutdown(&executor.Event{})
+
+	e.handleKill(nil)
 }
