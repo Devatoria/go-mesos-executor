@@ -16,10 +16,10 @@ import (
 )
 
 const (
-	iptableHookDnatRuleTemplate           = "-i !%s -p %s -j DNAT --dport %s --to-destination %s --wait"
-	iptableHookMasqueradeRuleTemplate     = "-o !%s -s %s/32 -j MASQUERADE --wait"
+	iptableHookDnatRuleTemplate           = "! -i %s -p %s -j DNAT --dport %s --to-destination %s --wait"
+	iptableHookMasqueradeRuleTemplate     = "! -o %s -s %s/32 -j MASQUERADE --wait"
 	iptableHookSelfMasqueradeRuleTemplate = "-d %s/32 -p %s -s %s/32 -j MASQUERADE --dport %s --wait"
-	iptableHookForwardRuleTemplate        = "-d %s/32 -i !%s -o %s -p %s -j ACCEPT --dport %s --wait"
+	iptableHookForwardRuleTemplate        = "-d %s/32 ! -i %s -o %s -p %s -j ACCEPT --dport %s --wait"
 )
 
 // containerIpCache is a map containing the containers ips. This map is useful when
