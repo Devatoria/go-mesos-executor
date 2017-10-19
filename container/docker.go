@@ -121,6 +121,7 @@ func (c *DockerContainerizer) ContainerCreate(info Info) (string, error) {
 			PortBindings: portsMappings,
 			Privileged:   info.TaskInfo.GetContainer().GetDocker().GetPrivileged(),
 		},
+		Name: info.Name,
 	})
 	if err != nil {
 		return "", err

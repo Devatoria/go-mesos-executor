@@ -63,6 +63,7 @@ var rootCmd = &cobra.Command{
 		// Create and run the executor
 		e := executor.NewExecutor(executor.Config{
 			AgentEndpoint: agentEndpoint,
+			ContainerName: containerName,
 			ExecutorID:    executorID,
 			FrameworkID:   frameworkID,
 		}, c, m)
