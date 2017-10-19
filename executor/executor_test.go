@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -467,7 +468,7 @@ func (s *ExecutorTestSuite) TestTearDown() {
 	// - should execute the pre/post stop hooks
 	// - should stop the container
 	// - should remove the associated task
-	assert.Nil(s.T(), s.executor.tearDown())   // Should be nil (no error)
+	s.executor.tearDown()
 	assert.True(s.T(), runPreStopHooksCalled)  // Should be true (pre-stop hooks ran)
 	assert.True(s.T(), runContainerStop)       // Should be true (container should be stopped)
 	assert.True(s.T(), runPostStopHooksCalled) // Should be true (post-stop hooks ran)
@@ -485,6 +486,16 @@ func (s *ExecutorTestSuite) TestWaitContainer() {
 	assert.Nil(s.T(), s.executor.waitContainer())                                                              // Should be nil (container exited, waited successfuly)
 	assert.NotEmpty(s.T(), s.executor.UnackedUpdates)                                                          // Should not be empty (containing finished update)
 	assert.Equal(s.T(), *mesos.TASK_FINISHED.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_FINISHED update
+
+	// Error case (exit code is not 0)
+	monkey.PatchInstanceMethod(reflect.TypeOf(s.executor.Containerizer), "ContainerWait", func(_ *types.FakeContainerizer, id string) (int, error) {
+		return 1, nil
+	})
+	defer monkey.UnpatchAll()
+
+	assert.Error(s.T(), s.executor.waitContainer())                                                          // Should throw an error (container exited with non-zero code)
+	assert.NotEmpty(s.T(), s.executor.UnackedUpdates)                                                        // Should not be empty
+	assert.Equal(s.T(), *mesos.TASK_FAILED.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_FAILED update
 }
 
 // Check that a trapped signal triggers the shutdown of the executor
@@ -497,6 +508,42 @@ func (s *ExecutorTestSuite) TestHandleStopSignals() {
 	s.executor.handleStopSignals()
 	assert.True(s.T(), s.executor.Shutdown)
 	s.executor.Shutdown = false
+}
+
+func (s *ExecutorTestSuite) TestThrowError() {
+	defer monkey.UnpatchAll()
+
+	// Patch functions in order to catch calls
+	runPreStopHooksCalled := false
+	monkey.PatchInstanceMethod(reflect.TypeOf(s.executor.HookManager), "RunPreStopHooks", func(_ *hook.Manager, c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
+		runPreStopHooksCalled = true
+
+		return nil
+	})
+
+	runPostStopHooksCalled := false
+	monkey.PatchInstanceMethod(reflect.TypeOf(s.executor.HookManager), "RunPostStopHooks", func(_ *hook.Manager, c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
+		runPostStopHooksCalled = true
+
+		return nil
+	})
+
+	runContainerStop := false
+	monkey.PatchInstanceMethod(reflect.TypeOf(s.executor.Containerizer), "ContainerStop", func(_ *types.FakeContainerizer, id string) error {
+		runContainerStop = true
+
+		return nil
+	})
+
+	err := errors.New("an error")                                        // Generate a random error
+	assert.Equal(s.T(), err, s.executor.throwError(err))                 // Should return the given error
+	assert.NotEmpty(s.T(), s.executor.UnackedUpdates)                    // Should contain an update
+	update := pullFirstUpdate(s.executor.UnackedUpdates)                 // Get the thrown update
+	assert.Equal(s.T(), *mesos.TASK_FAILED.Enum(), *update.Status.State) // Should be a TASK_FAILED update
+	assert.Equal(s.T(), err.Error(), *update.Status.Message)             // Should be the same update message as the given error message
+	assert.True(s.T(), runPreStopHooksCalled)                            // Should be true (pre-stop hooks ran)
+	assert.True(s.T(), runContainerStop)                                 // Should be true (container should be stopped)
+	assert.True(s.T(), runPostStopHooksCalled)                           // Should be true (post-stop hooks ran)
 }
 
 // Launch test suite
