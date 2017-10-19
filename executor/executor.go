@@ -212,12 +212,12 @@ func (e *Executor) handleLaunch(ev *executor.Event) error {
 	// Get task resources
 	mem, err := getMemoryLimit(e.TaskInfo)
 	if err != nil {
-		return e.throwError(err)
+		return e.throwError(fmt.Errorf("error while getting memory limit: %v", err))
 	}
 
 	cpuShares, err := getCPUSharesLimit(e.TaskInfo)
 	if err != nil {
-		return e.throwError(err)
+		return e.throwError(fmt.Errorf("error while getting cpu shares limit: %v", err))
 	}
 
 	// Create container info
@@ -229,32 +229,32 @@ func (e *Executor) handleLaunch(ev *executor.Event) error {
 
 	err = e.HookManager.RunPreCreateHooks(e.Containerizer, &e.TaskInfo)
 	if err != nil {
-		return e.throwError(err)
+		return e.throwError(fmt.Errorf("error while running pre-create hooks: %v", err))
 	}
 
 	// Create container
 	containerID, err := e.Containerizer.ContainerCreate(info)
 	if err != nil {
-		return e.throwError(err)
+		return e.throwError(fmt.Errorf("error while creating the container: %v", err))
 	}
 	e.ContainerID = containerID
 
 	// Run pre-run hooks
 	err = e.HookManager.RunPreRunHooks(e.Containerizer, &e.TaskInfo, e.ContainerID)
 	if err != nil {
-		return e.throwError(err)
+		return e.throwError(fmt.Errorf("error while running pre-run hooks: %v", err))
 	}
 
 	// Launch container
 	err = e.Containerizer.ContainerRun(containerID)
 	if err != nil {
-		return e.throwError(err)
+		return e.throwError(fmt.Errorf("error while starting the container: %v", err))
 	}
 
 	// Run post-run hooks
 	err = e.HookManager.RunPostRunHooks(e.Containerizer, &e.TaskInfo, e.ContainerID)
 	if err != nil {
-		return e.throwError(err)
+		return e.throwError(fmt.Errorf("error while running post-run hooks: %v", err))
 	}
 
 	// Initialize health checker for the current task and run checks
@@ -262,7 +262,7 @@ func (e *Executor) handleLaunch(ev *executor.Event) error {
 		var pid int
 		pid, err = e.Containerizer.ContainerGetPID(containerID)
 		if err != nil {
-			return e.throwError(err)
+			return e.throwError(fmt.Errorf("error while getting container pid: %v", err))
 		}
 		e.HealthChecker = healthcheck.NewChecker(pid, e.Containerizer, containerID, &e.TaskInfo)
 		go e.healthCheck()
@@ -273,7 +273,7 @@ func (e *Executor) handleLaunch(ev *executor.Event) error {
 	status.State = mesos.TASK_RUNNING.Enum()
 	err = e.updateStatus(status)
 	if err != nil {
-		return e.throwError(err)
+		return e.throwError(fmt.Errorf("error while updating task status: %v", err))
 	}
 
 	// Handle the container exit
@@ -463,7 +463,7 @@ func (e *Executor) waitContainer() error {
 			zap.Error(err),
 		)
 
-		return e.throwError(err)
+		return e.throwError(fmt.Errorf("error while waiting for container to stop: %v", err))
 	}
 
 	logger.GetInstance().Info("Container exited",
@@ -473,7 +473,7 @@ func (e *Executor) waitContainer() error {
 	)
 
 	if code != 0 {
-		return e.throwError(fmt.Errorf("Container exited (code %d)", code))
+		return e.throwError(fmt.Errorf("container exited (code %d)", code))
 	}
 
 	e.tearDown()
