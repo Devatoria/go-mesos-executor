@@ -146,10 +146,10 @@ func (s *IptablesTestSuite) TestIptablesHookRunPostRun() {
 		append(
 			BaseForwardRule,
 			[]string{
-				"-A FORWARD -d 172.0.2.1/32 -i !docker0 -o docker0 -p tcp -m tcp --dport 80 -j ACCEPT",
-				"-A FORWARD -d 172.0.2.1/32 -i !docker0 -o docker0 -p udp -m udp --dport 10000 -j ACCEPT",
-				"-A FORWARD -d 172.0.3.1/32 -i !docker0 -o docker0 -p tcp -m tcp --dport 80 -j ACCEPT",
-				"-A FORWARD -d 172.0.3.1/32 -i !docker0 -o docker0 -p udp -m udp --dport 10000 -j ACCEPT",
+				"-A FORWARD -d 172.0.2.1/32 ! -i docker0 -o docker0 -p tcp -m tcp --dport 80 -j ACCEPT",
+				"-A FORWARD -d 172.0.2.1/32 ! -i docker0 -o docker0 -p udp -m udp --dport 10000 -j ACCEPT",
+				"-A FORWARD -d 172.0.3.1/32 ! -i docker0 -o docker0 -p tcp -m tcp --dport 80 -j ACCEPT",
+				"-A FORWARD -d 172.0.3.1/32 ! -i docker0 -o docker0 -p udp -m udp --dport 10000 -j ACCEPT",
 			}...,
 		),
 		forwardRules,
@@ -160,10 +160,10 @@ func (s *IptablesTestSuite) TestIptablesHookRunPostRun() {
 		append(
 			BasePostRoutingRules,
 			[]string{
-				"-A POSTROUTING -s 172.0.2.1/32 -o !docker0 -j MASQUERADE",
+				"-A POSTROUTING -s 172.0.2.1/32 ! -o docker0 -j MASQUERADE",
 				"-A POSTROUTING -s 172.0.2.1/32 -d 172.0.2.1/32 -p tcp -m tcp --dport 80 -j MASQUERADE",
 				"-A POSTROUTING -s 172.0.2.1/32 -d 172.0.2.1/32 -p udp -m udp --dport 10000 -j MASQUERADE",
-				"-A POSTROUTING -s 172.0.3.1/32 -o !docker0 -j MASQUERADE",
+				"-A POSTROUTING -s 172.0.3.1/32 ! -o docker0 -j MASQUERADE",
 				"-A POSTROUTING -s 172.0.3.1/32 -d 172.0.3.1/32 -p tcp -m tcp --dport 80 -j MASQUERADE",
 				"-A POSTROUTING -s 172.0.3.1/32 -d 172.0.3.1/32 -p udp -m udp --dport 10000 -j MASQUERADE",
 			}...,
@@ -177,10 +177,10 @@ func (s *IptablesTestSuite) TestIptablesHookRunPostRun() {
 		append(
 			BasePreRoutingRules,
 			[]string{
-				"-A PREROUTING -i !docker0 -p tcp -m tcp --dport 32000 -j DNAT --to-destination 172.0.2.1:80",
-				"-A PREROUTING -i !docker0 -p udp -m udp --dport 33000 -j DNAT --to-destination 172.0.2.1:10000",
-				"-A PREROUTING -i !docker0 -p tcp -m tcp --dport 32000 -j DNAT --to-destination 172.0.3.1:80",
-				"-A PREROUTING -i !docker0 -p udp -m udp --dport 33000 -j DNAT --to-destination 172.0.3.1:10000",
+				"-A PREROUTING ! -i docker0 -p tcp -m tcp --dport 32000 -j DNAT --to-destination 172.0.2.1:80",
+				"-A PREROUTING ! -i docker0 -p udp -m udp --dport 33000 -j DNAT --to-destination 172.0.2.1:10000",
+				"-A PREROUTING ! -i docker0 -p tcp -m tcp --dport 32000 -j DNAT --to-destination 172.0.3.1:80",
+				"-A PREROUTING ! -i docker0 -p udp -m udp --dport 33000 -j DNAT --to-destination 172.0.3.1:10000",
 			}...,
 		),
 		preRoutingRules,
