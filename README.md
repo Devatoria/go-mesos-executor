@@ -144,7 +144,7 @@ You can run tests using `make test`. Tests are using `testify` package to create
 
 ## Run linters
 
-You can also run linters using `gometalinter` tool with the `make lint` command. Before running the linters, you have to install them using `gometalinter --install` command. Please take a look at https://github.com/alecthomas/gometalinter for more information
+You can also run linters using `gometalinter` tool with the `make lint` command. Before running the linters, you have to install them using `gometalinter --install` command. Please take a look at https://github.com/alecthomas/gometalinter for more informations.
 
 ## TODO
 
