@@ -142,10 +142,13 @@ You can access Marathon framework UI using your `http://<IP>:8080/`. Executor lo
 
 You can run tests using `make test`. Tests are using `testify` package to create `suite` and ensure tests are always ran in the same conditions. Some external packages are monkey patched in order to emulate its behavior. Finally, a fake containerizer (implementing the containerizer interface) is in the `types` package and is only used for testing.
 
+## Run linters
+
+You can also run linters using `gometalinter` tool with the `make lint` command. Before running the linters, you have to install them using `gometalinter --install` command. Please take a look at https://github.com/alecthomas/gometalinter for more information
+
 ## TODO
 
 * [FEATURE] Add checkpointing support
-* [FEATURE] Return container error message when an error occurs during container run
 * [FEATURE] Add some useful hooks
   * Error on privileged containers
   * Volumes sandboxing
