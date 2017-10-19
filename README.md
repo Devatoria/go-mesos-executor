@@ -148,6 +148,7 @@ You can also run linters using `gometalinter` tool with the `make lint` command.
 
 ## TODO
 
+* [FEATURE] Allow executor to re-register with the agent, keeping containers running while agent is stopped
 * [FEATURE] Add checkpointing support
 * [FEATURE] Add some useful hooks
   * Error on privileged containers
