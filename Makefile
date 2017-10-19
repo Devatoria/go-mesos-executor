@@ -47,4 +47,4 @@ redocker: clean docker
 
 .PHONY: lint
 lint:
-	gometalinter ./... --vendor --exclude="^*_test.go" --disable=errcheck --cyclo-over=15
+	gometalinter ./... --vendor --exclude="^*_test.go" --disable=errcheck --disable gocyclo
