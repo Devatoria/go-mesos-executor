@@ -3,9 +3,12 @@ hooks: # Enabled hooks
   - acl
   - removeContainer
   - iptables
+  - netns
 proc_path: /mnt/proc # Mount path of host proc folder
 iptables:
   container_bridge_interface: docker0 # Brigde interface for container network
 acl:
   default_allowed_cidr: # Set of default IP (with CIDR) to allow
     - 172.17.0.1/32 # You should add host IP here for framework-based health checks
+netns:
+  path: /var/run/netns # netns tool path
