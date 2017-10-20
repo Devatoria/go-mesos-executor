@@ -57,6 +57,7 @@ func (s *ExecutorTestSuite) SetupTest() {
 	// Executor configuration
 	s.config = Config{
 		AgentEndpoint: sURL.Host,
+		ContainerName: "randomName",
 		ExecutorID:    "fakeExecutorID",
 		FrameworkID:   "fakeFrameworkID",
 	}
@@ -220,6 +221,8 @@ func (s *ExecutorTestSuite) TestHandleAcknowledged() {
 // - a status update (RUNNING) is pushed in unacks
 // - returns an error if a pre-create/pre-run/post-run hook fails
 func (s *ExecutorTestSuite) TestHandleLaunch() {
+	defer monkey.UnpatchAll()
+
 	// Patch waitContainer in order to fake a long-running container (never stopped)
 	done := make(chan struct{})
 	monkey.PatchInstanceMethod(reflect.TypeOf(s.executor.Containerizer), "ContainerWait", func(_ *types.FakeContainerizer, _ string) (int, error) {
@@ -230,7 +233,17 @@ func (s *ExecutorTestSuite) TestHandleLaunch() {
 
 		return 0, nil
 	})
-	defer monkey.UnpatchAll()
+
+	var containerName string
+	var guard *monkey.PatchGuard
+	guard = monkey.PatchInstanceMethod(reflect.TypeOf(s.executor.Containerizer), "ContainerCreate", func(c *types.FakeContainerizer, i container.Info) (string, error) {
+		guard.Unpatch()
+		defer guard.Restore()
+
+		containerName = i.Name
+
+		return c.ContainerCreate(i)
+	})
 
 	// Unacked tasks/updates should be empty
 	assert.Empty(s.T(), s.executor.UnackedUpdates)
@@ -251,6 +264,7 @@ func (s *ExecutorTestSuite) TestHandleLaunch() {
 	// Nominal case (long-running container)
 	s.executor.HookManager.Hooks = []*hook.Hook{}                                                             // Remove previously added failing hooks
 	assert.Nil(s.T(), s.executor.handleLaunch(&ev))                                                           // Should return nil (launch successful)
+	assert.Equal(s.T(), containerName, s.executor.ContainerName)                                              // Should create the container with the given name from mesos
 	assert.NotEmpty(s.T(), s.executor.UnackedUpdates)                                                         // Should not be empty (TASK_RUNNING update)
 	assert.Equal(s.T(), *mesos.TASK_RUNNING.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_RUNNING update
 	assert.Equal(s.T(), "fakeContainerID", s.executor.ContainerID)                                            // Should be equal to the container ID

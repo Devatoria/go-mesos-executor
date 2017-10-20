@@ -23,5 +23,6 @@ type Containerizer interface {
 type Info struct {
 	CPUSharesLimit uint64
 	MemoryLimit    uint64
+	Name           string
 	TaskInfo       mesos.TaskInfo
 }
