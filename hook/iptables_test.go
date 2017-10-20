@@ -147,9 +147,13 @@ func (s *IptablesTestSuite) TestIptablesHookRunPostRun() {
 			BaseForwardRule,
 			[]string{
 				"-A FORWARD -d 172.0.2.1/32 ! -i docker0 -o docker0 -p tcp -m tcp --dport 80 -j ACCEPT",
+				"-A FORWARD -s 172.0.2.1/32 -i docker0 ! -o docker0 -p tcp -m tcp --sport 80 -j ACCEPT",
 				"-A FORWARD -d 172.0.2.1/32 ! -i docker0 -o docker0 -p udp -m udp --dport 10000 -j ACCEPT",
+				"-A FORWARD -s 172.0.2.1/32 -i docker0 ! -o docker0 -p udp -m udp --sport 10000 -j ACCEPT",
 				"-A FORWARD -d 172.0.3.1/32 ! -i docker0 -o docker0 -p tcp -m tcp --dport 80 -j ACCEPT",
+				"-A FORWARD -s 172.0.3.1/32 -i docker0 ! -o docker0 -p tcp -m tcp --sport 80 -j ACCEPT",
 				"-A FORWARD -d 172.0.3.1/32 ! -i docker0 -o docker0 -p udp -m udp --dport 10000 -j ACCEPT",
+				"-A FORWARD -s 172.0.3.1/32 -i docker0 ! -o docker0 -p udp -m udp --sport 10000 -j ACCEPT",
 			}...,
 		),
 		forwardRules,
