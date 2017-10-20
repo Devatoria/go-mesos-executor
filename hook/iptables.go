@@ -19,7 +19,8 @@ const (
 	iptableHookDnatRuleTemplate           = "! -i %s -p %s -j DNAT --dport %s --to-destination %s --wait"
 	iptableHookMasqueradeRuleTemplate     = "! -o %s -s %s/32 -j MASQUERADE --wait"
 	iptableHookSelfMasqueradeRuleTemplate = "-d %s/32 -p %s -s %s/32 -j MASQUERADE --dport %s --wait"
-	iptableHookForwardRuleTemplate        = "-d %s/32 ! -i %s -o %s -p %s -j ACCEPT --dport %s --wait"
+	iptableHookForwardInRuleTemplate      = "-d %s/32 ! -i %s -o %s -p %s -j ACCEPT --dport %s --wait"
+	iptableHookForwardOutRuleTemplate     = "-i %s ! -o %s -p %s -s %s/32 -j ACCEPT --sport %s --wait"
 )
 
 // containerIpCache is a map containing the containers ips. This map is useful when
@@ -164,15 +165,33 @@ func generateIptables(
 			}
 
 			// Insert rule for forwarding incoming data on host port to container
-			forwardRule := fmt.Sprintf(
-				iptableHookForwardRuleTemplate,
+			forwardInRule := fmt.Sprintf(
+				iptableHookForwardInRuleTemplate,
 				containerIP.String(),
 				containerInterface,
 				containerInterface,
 				port.GetProtocol(),
 				strconv.Itoa(int(port.GetContainerPort())),
 			)
-			err = action("filter", "FORWARD", strings.Split(forwardRule, " ")...)
+			err = action("filter", "FORWARD", strings.Split(forwardInRule, " ")...)
+			if err != nil {
+				if stopOnError {
+					return err
+				}
+
+				logger.GetInstance().Warn(err.Error())
+			}
+
+			// Insert rule for forwarding incoming data on host port to container
+			forwardOutRule := fmt.Sprintf(
+				iptableHookForwardOutRuleTemplate,
+				containerInterface,
+				containerInterface,
+				port.GetProtocol(),
+				containerIP.String(),
+				strconv.Itoa(int(port.GetContainerPort())),
+			)
+			err = action("filter", "FORWARD", strings.Split(forwardOutRule, " ")...)
 			if err != nil {
 				if stopOnError {
 					return err
