@@ -60,6 +60,25 @@ Those rules will be injected **after** the label defined rules and **before** th
 
 Please note that you are in charge of allowing needed sources for health checks. If you are using the executor-based health checks (as described below), no extra rule is needed. If you are using framework-based health checks, you will have to allow either the bridge IP or the host IP (the one which is doing the health checks), depending on your container network configuration.
 
+
+### Netns hook
+
+This hook manages the netns tool links mainly used to executes command into the network namespace of a given container. It works by:
+
+* creating a symbolic link on post-run from the network namespace file of the given container process to the netns directory
+  * for example, from `/proc/666/ns/net` to `/var/run/netns`
+* deleting this symbolic link on post-stop
+
+Once the container is started, you can do the following:
+
+* use `ip netns` to list available links
+* use `ip netns exec <link_name> <command>` to execute the given command into the given link
+  * example: `ip netns exec mesos-9408aa26-075b-47e3-9b1d-46c8e0c34251-S682.839e046e-4a1c-462b-bc3d-a3fb14cbf967 iptables -L -n -v`
+
+Please note that the link name is equal to the container task ID.
+
+The hook uses the `proc_path` configuration to retrieve the container process network namespace file and the `netns.path` to retrieve the netns tool directory (by default: `/var/run/netns`).
+
 ## Health checks
 
 ### Introduction
