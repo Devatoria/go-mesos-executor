@@ -1,6 +1,10 @@
 # go-mesos-executor
 
-This is a custom container Apache Mesos executor written in Go. It actually can launch Docker containers but is designed to accept others container engines as soon as they implement the container interface. The particuliarity of this executor is the fact that it can use hooks to do actions at some container life steps.
+Container Apache Mesos executor written in Go. It actually can launch Docker containers but is designed to accept others container engines as soon as they implement the containerizer interface. The particuliarity of this executor is the fact that it can use hooks to do actions at some container life steps.
+
+## Disclaimer
+
+Please note that this executor is a replacement of the official Docker executor provided by Mesos. It aims to bring a more flexible container executor by allowing other containerizers to be used. It is **not** a custom executor.
 
 ## General design
 
