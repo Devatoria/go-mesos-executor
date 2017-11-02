@@ -64,7 +64,6 @@ Those rules will be injected **after** the label defined rules and **before** th
 
 Please note that you are in charge of allowing needed sources for health checks. If you are using the executor-based health checks (as described below), no extra rule is needed. If you are using framework-based health checks, you will have to allow either the bridge IP or the host IP (the one which is doing the health checks), depending on your container network configuration.
 
-
 ### Netns hook
 
 This hook manages the netns tool links mainly used to executes command into the network namespace of a given container. It works by:
@@ -82,6 +81,56 @@ Once the container is started, you can do the following:
 Please note that the link name is equal to the container task ID.
 
 The hook uses the `proc_path` configuration to retrieve the container process network namespace file and the `netns.path` to retrieve the netns tool directory (by default: `/var/run/netns`).
+=======
+
+### Iptables hook
+
+This hook injects iptables rules in the host network namespace. This iptables allow access to your containers from the outside world, and communication between containers.
+Iptables inserted by this hook are similar to iptables inserted by docker when docker option "iptables" is activated (*--iptables=true*)
+If you use docker as your containerizer and docker is configured with *--iptables=true,* the use of iptables hook will result in duplicates rules in your iptables tables.
+
+For more information on how docker manage communiction with containers and iptables, here is the [official documentation](https://docs.docker.com/engine/userguide/networking/default_network/container-communication/)
+
+#### Configuration
+Iptables hook configuration is done by adding the following lines to your configuration file:
+
+```yaml
+iptables:
+  container_bridge_interface: docker0
+```
+
+The hook needs the container bridge interface name for specifying the interface in the iptable rules. Note that this hook will only work with bridge network mode.
+
+Other optional parameters can be configured :
+```yaml
+iptables:
+  ip_forwarding: false
+  ip_masquerading: false
+  container_bridge_interface: docker0
+```
+
+To learn more about these parameters, read the following section.
+
+#### How does the iptables hook works ?
+At task post-run, containers ip, ports and associated network protocol are retrieved, and iptables are inserted. At task pre-stop, the inserted iptables are removed.
+
+Iptables managed by the hook are the following :
+
+**IP forwarding** : these iptables ensure that packets destinated to the container bridge can be forwarded, and vice versa.
+This rules are useful when your FORWARD table policy is 'DROP'. If your FORWARD table policy is 'ACCEPT', then this rules are not mandatory for forwarding.
+
+ * -A FORWARD -d 172.17.0.2/32 ! -i docker0 -o docker0 -p tcp -m tcp --dport 80 -j ACCEPT
+ * -A FORWARD -s 172.17.0.2/32 -i docker0 ! -o docker0 -p tcp -m tcp --sport 80 -j ACCEPT
+
+Ip forwarding management by the iptable hook is activated by default. You can disable it by specifying **ip_forwarding: false** in the iptables hook configuration.
+
+**IP masquerading** : these iptables ensure that containers see incoming packets originating ip as the "real" originating ip. If this options is deactived, then containers will see all packets emaning from the bridge ip. Masquerading is necessary when you want to communicate to your container from another network interface or from an external system. This rules also ensure that data sent back by containers have the correct destination ip.
+
+ * -A PREROUTING ! -i docker0 -p tcp -m tcp --dport 32000 -j DNAT --to-destination 172.17.0.2:80"
+ * -A POSTROUTING -s 172.17.0.2/32 ! -o docker0 -j MASQUERADE
+ * -A POSTROUTING -s 172.17.0.2/32 -d 172.17.0.2/32 -p tcp -m tcp --dport 80 -j MASQUERADE
+
+Ip masquerading management by the iptable hook is activated by default. You can disable it by setting **ip_masquerading: false** in the iptables hook configuration.
 
 ## Health checks
 

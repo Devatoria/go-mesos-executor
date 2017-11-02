@@ -109,95 +109,108 @@ func generateIptables(
 		return fmt.Errorf("could not retrieve container brigde interface")
 	}
 
+	ipForward := viper.GetBool("iptables.ip_forwarding")
+	ipMasquerading := viper.GetBool("iptables.ip_masquerading")
+
+	// Init errors
+	var err error
 	// Iterate over all container IPs, and for each IP, iterate on container/host binded ports.
 	// Insert needed iptables for each IP and port.
 	for _, containerIP := range containerIPs {
 		// Insert rule for masquerading network flow going out of container. This rule only needs the
 		// container IP
-		masqueradeRule := fmt.Sprintf(
-			iptableHookMasqueradeRuleTemplate,
-			containerInterface,
-			containerIP.String(),
-		)
-		err := action("nat", "POSTROUTING", strings.Split(masqueradeRule, " ")...)
-		if err != nil {
-			if stopOnError {
-				return err
-			}
+		if ipMasquerading {
+			masqueradeRule := fmt.Sprintf(
+				iptableHookMasqueradeRuleTemplate,
+				containerInterface,
+				containerIP.String(),
+			)
+			err = action("nat", "POSTROUTING", strings.Split(masqueradeRule, " ")...)
+			if err != nil {
+				if stopOnError {
+					return err
+				}
 
-			logger.GetInstance().Warn(err.Error())
+				logger.GetInstance().Warn(err.Error())
+			}
 		}
 
 		for _, port := range portMappings {
 			// Insert rule for translating incoming data on host port to container
-			dnatDestination := []string{containerIP.String(), ":", strconv.Itoa(int(port.GetContainerPort()))}
-			dnatRule := fmt.Sprintf(
-				iptableHookDnatRuleTemplate,
-				containerInterface,
-				port.GetProtocol(),
-				strconv.Itoa(int(port.GetHostPort())),
-				strings.Join(dnatDestination, ""),
-			)
-			err = action("nat", "PREROUTING", strings.Split(dnatRule, " ")...)
-			if err != nil {
-				if stopOnError {
-					return err
-				}
+			if ipMasquerading {
+				dnatDestination := []string{containerIP.String(), ":", strconv.Itoa(int(port.GetContainerPort()))}
+				dnatRule := fmt.Sprintf(
+					iptableHookDnatRuleTemplate,
+					containerInterface,
+					port.GetProtocol(),
+					strconv.Itoa(int(port.GetHostPort())),
+					strings.Join(dnatDestination, ""),
+				)
+				err = action("nat", "PREROUTING", strings.Split(dnatRule, " ")...)
+				if err != nil {
+					if stopOnError {
+						return err
+					}
 
-				logger.GetInstance().Warn(err.Error())
+					logger.GetInstance().Warn(err.Error())
+				}
 			}
 
 			// Insert rule for masquerading container -> container network flow
-			selfMasqueradeRule := fmt.Sprintf(
-				iptableHookSelfMasqueradeRuleTemplate,
-				containerIP.String(),
-				port.GetProtocol(),
-				containerIP.String(),
-				strconv.Itoa(int(port.GetContainerPort())),
-			)
-			err = action("nat", "POSTROUTING", strings.Split(selfMasqueradeRule, " ")...)
-			if err != nil {
-				if stopOnError {
-					return err
-				}
+			if ipMasquerading {
+				selfMasqueradeRule := fmt.Sprintf(
+					iptableHookSelfMasqueradeRuleTemplate,
+					containerIP.String(),
+					port.GetProtocol(),
+					containerIP.String(),
+					strconv.Itoa(int(port.GetContainerPort())),
+				)
+				err = action("nat", "POSTROUTING", strings.Split(selfMasqueradeRule, " ")...)
+				if err != nil {
+					if stopOnError {
+						return err
+					}
 
-				logger.GetInstance().Warn(err.Error())
+					logger.GetInstance().Warn(err.Error())
+				}
 			}
 
-			// Insert rule for forwarding incoming data on host port to container
-			forwardInRule := fmt.Sprintf(
-				iptableHookForwardInRuleTemplate,
-				containerIP.String(),
-				containerInterface,
-				containerInterface,
-				port.GetProtocol(),
-				strconv.Itoa(int(port.GetContainerPort())),
-			)
-			err = action("filter", "FORWARD", strings.Split(forwardInRule, " ")...)
-			if err != nil {
-				if stopOnError {
-					return err
+			if ipForward {
+				// Insert rule for forwarding incoming data on host port to container
+				forwardInRule := fmt.Sprintf(
+					iptableHookForwardInRuleTemplate,
+					containerIP.String(),
+					containerInterface,
+					containerInterface,
+					port.GetProtocol(),
+					strconv.Itoa(int(port.GetContainerPort())),
+				)
+				err = action("filter", "FORWARD", strings.Split(forwardInRule, " ")...)
+				if err != nil {
+					if stopOnError {
+						return err
+					}
+
+					logger.GetInstance().Warn(err.Error())
 				}
 
-				logger.GetInstance().Warn(err.Error())
-			}
+				// Insert rule for forwarding incoming data on host port to container
+				forwardOutRule := fmt.Sprintf(
+					iptableHookForwardOutRuleTemplate,
+					containerInterface,
+					containerInterface,
+					port.GetProtocol(),
+					containerIP.String(),
+					strconv.Itoa(int(port.GetContainerPort())),
+				)
+				err = action("filter", "FORWARD", strings.Split(forwardOutRule, " ")...)
+				if err != nil {
+					if stopOnError {
+						return err
+					}
 
-			// Insert rule for forwarding incoming data on host port to container
-			forwardOutRule := fmt.Sprintf(
-				iptableHookForwardOutRuleTemplate,
-				containerInterface,
-				containerInterface,
-				port.GetProtocol(),
-				containerIP.String(),
-				strconv.Itoa(int(port.GetContainerPort())),
-			)
-			err = action("filter", "FORWARD", strings.Split(forwardOutRule, " ")...)
-			if err != nil {
-				if stopOnError {
-					return err
+					logger.GetInstance().Warn(err.Error())
 				}
-
-				logger.GetInstance().Warn(err.Error())
 			}
 		}
 	}

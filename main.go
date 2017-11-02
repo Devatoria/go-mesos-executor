@@ -104,6 +104,10 @@ func init() {
 	viper.BindPFlag("hooks", rootCmd.PersistentFlags().Lookup("hooks"))
 	rootCmd.PersistentFlags().String("proc_path", "/proc", "Proc mount path")
 	viper.BindPFlag("proc_path", rootCmd.PersistentFlags().Lookup("proc_path"))
+
+	// Iptables hook
+	viper.SetDefault("iptables.ip_forwarding", true)
+	viper.SetDefault("iptables.ip_masquerading", true)
 }
 
 func readConfig() {
