@@ -44,13 +44,25 @@ This hook removes the stopped container after shutting down (or task kill) in or
 
 ### ACL hook
 
-This hook injects iptables rules in the container network namespace. To use it, just pass a list of IP, comma separated, with or without CIDR, to the `EXECUTOR_ALLOWED_IP` label. For example: `EXECUTOR_ALLOWED_IP: 8.8.8.8,10.0.0.0/24`.
+This hook injects iptables rules in the host namespace. To use it, just pass a list of IP, comma separated, with or without CIDR, to the `EXECUTOR_$PORTINDEX_ACL` label. For example: `EXECUTOR_0_ACL: 8.8.8.8,10.0.0.0/24`.
 
-As soon as the hook is enabled, and even if no user-defined rules are defined, it appends some extra rules at the very end:
+This hook simply appends rules to a chain of the iptable filter table. Exemple :
+  * -A INPUT -s 8.8.8.8/32 -i ext1 -p tcp -m tcp --dport 10000 -j ACCEPT
+You need to configure the executor to use a specific chain:
 
-* one to allow traffic on the loopback interface
-* one to allow established and related traffic on all interfaces
-* one to drop all the traffic
+```yaml
+acl:
+  chain: "MYCHAIN"
+```
+
+The chain can be the **INPUT** chain, or another user-defined chain. In the first case, there is nothing more to do (aside from setting the chain policy to *DROP* to make the acl actually useful). In the second case, you will have to create the specified chain manually, configure it, and call it from the **INPUT** chain.
+
+By default, acl is set for all host network interfaces. but you can specify the interface to use:
+
+```yaml
+acl:
+  external_interface: myinterface
+```
 
 You can add extra rules for all containers by adding this section to the configuration file:
 
@@ -62,7 +74,7 @@ acl:
 
 Those rules will be injected **after** the label defined rules and **before** the default rules. All rules (except the default ones) are filtering on the mapped ports and protocols given in the task.
 
-Please note that you are in charge of allowing needed sources for health checks. If you are using the executor-based health checks (as described below), no extra rule is needed. If you are using framework-based health checks, you will have to allow either the bridge IP or the host IP (the one which is doing the health checks), depending on your container network configuration.
+Please note that you are in charge of allowing needed sources for health checks. If you are using the executor-based health checks (as described below), no extra rule is needed. If you are using framework-based health checks, you will have to allow either the host hosting the framework (if different).
 
 ### Netns hook
 
