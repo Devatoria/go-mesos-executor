@@ -1,6 +1,8 @@
 package main
 
 import (
+	"time"
+
 	"github.com/Devatoria/go-mesos-executor/container"
 	"github.com/Devatoria/go-mesos-executor/executor"
 	"github.com/Devatoria/go-mesos-executor/hook"
@@ -104,6 +106,8 @@ func init() {
 	viper.BindPFlag("hooks", rootCmd.PersistentFlags().Lookup("hooks"))
 	rootCmd.PersistentFlags().String("proc_path", "/proc", "Proc mount path")
 	viper.BindPFlag("proc_path", rootCmd.PersistentFlags().Lookup("proc_path"))
+	rootCmd.PersistentFlags().Duration("registering_retry", 100*time.Millisecond, "Executor registering delay in duration")
+	viper.BindPFlag("registering_retry", rootCmd.PersistentFlags().Lookup("registering_retry"))
 
 	// Iptables hook
 	viper.SetDefault("iptables.ip_forwarding", true)

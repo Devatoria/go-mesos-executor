@@ -5,6 +5,7 @@ hooks: # Enabled hooks
   - iptables
   - netns
 proc_path: /mnt/proc # Mount path of host proc folder
+registering_retry: 100ms # Time to wait before two registering retry
 iptables:
   container_bridge_interface: docker0 # Brigde interface for container network
 acl:

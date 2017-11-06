@@ -14,6 +14,7 @@ import (
 	"github.com/Devatoria/go-mesos-executor/healthcheck"
 	"github.com/Devatoria/go-mesos-executor/hook"
 	"github.com/Devatoria/go-mesos-executor/logger"
+	"github.com/spf13/viper"
 
 	"github.com/mesos/mesos-go/api/v1/lib"
 	"github.com/mesos/mesos-go/api/v1/lib/encoding"
@@ -161,14 +162,15 @@ func (e *Executor) Execute() error {
 			defer resp.Close()
 		}
 
-		// If there's an error which is not an EOF, we throw
-		// Otherwise, it means that we've been disconnected from the agent and we will try to reconnect
+		// If there's an error we go back to start of the loop and try registering again
 		if err != nil {
-			if err == io.EOF {
-				continue
-			}
-
-			return err
+			registerDelay := viper.GetDuration("registering_retry")
+			logger.GetInstance().Warn(fmt.Sprintf(
+				"Failed to register to the agent. Will retry after %s",
+				registerDelay.String(),
+			))
+			<-time.After(time.Duration(registerDelay) * time.Millisecond)
+			continue
 		}
 
 		// We are connected, we start to handle events
@@ -177,11 +179,21 @@ func (e *Executor) Execute() error {
 			decoder := encoding.Decoder(resp)
 			err = decoder.Decode(&event)
 			if err != nil {
+				if err == io.ErrUnexpectedEOF {
+					logger.GetInstance().Error("EOF error while decoding event.")
+					break
+				}
+				e.handleKill(nil)
 				return err
 			}
 
 			err = e.Handler.HandleEvent(&event)
 			if err != nil {
+				if err == io.ErrUnexpectedEOF {
+					logger.GetInstance().Error("EOF error while handling event.")
+					break
+				}
+				e.handleKill(nil)
 				return err
 			}
 		}
