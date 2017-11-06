@@ -229,22 +229,3 @@ You can run tests using `make test`. Tests are using `testify` package to create
 ## Run linters
 
 You can also run linters using `gometalinter` tool with the `make lint` command. Before running the linters, you have to install them using `gometalinter --install` command. Please take a look at https://github.com/alecthomas/gometalinter for more informations.
-
-## TODO
-
-* [FEATURE] Allow executor to re-register with the agent, keeping containers running while agent is stopped
-* [FEATURE] Add checkpointing support
-* [FEATURE] Add some useful hooks
-  * Error on privileged containers
-  * Volumes sandboxing
-  * Forced network mode (bridged)
-* [IMPROVEMENT] Health checks: please take a look at health checks section
-  * Add HTTPS support (not tested)
-  * Implement missing features
-    * Environment, arguments and user for command checks
-    * Statuses for HTTP checks
-* [FEATURE] Containerizer
-  * libcontainer (runc)
-* [IMPROVEMENT] Refactor iptables hook code to improve readability and visibility. (Write a wrapper for iptables module, use a struct for all iptables parameters)
-
-The executor actually does not handle custom parameters sent to Docker CLI. This has to be done with a matching enum (I think) and it is actually a little bit boring to do this :)
