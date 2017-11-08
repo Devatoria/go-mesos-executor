@@ -18,7 +18,7 @@ import (
 type ACLHookTestSuite struct {
 	suite.Suite
 	c                 *types.FakeContainerizer
-	hook              Hook
+	hook              ACLHook
 	hostNamespace     netns.NsHandle
 	isolatedNamespace netns.NsHandle
 	iptablesDriver    *iptables.IPTables
@@ -28,7 +28,8 @@ type ACLHookTestSuite struct {
 
 func (s *ACLHookTestSuite) SetupTest() {
 	s.c = types.NewFakeContainerizer() // Generate fake containerizer
-	s.hook = ACLHook                   // Retrieve hook
+	s.hook = ACLHook{}                 // Retrieve hook
+	s.hook.SetupHook()
 
 	hostNs, _ := netns.Get() // Get current namespace
 	s.hostNamespace = hostNs
@@ -72,7 +73,6 @@ func (s *ACLHookTestSuite) TearDownTest() {
 	netns.Set(s.hostNamespace)
 	s.isolatedNamespace.Close()
 	s.hostNamespace.Close()
-
 }
 
 // Check that:
@@ -85,7 +85,6 @@ func (s *ACLHookTestSuite) TearDownTest() {
 // - rules are set for all interfaces if not configured
 // - an rror is thrown if chain does not exist
 func (s *ACLHookTestSuite) TestACLHookRunPostRun() {
-
 	// Store the state of the filter chains
 	baseInputRule, _ := s.iptablesDriver.List("filter", "INPUT")
 	baseForwardRule, _ := s.iptablesDriver.List("filter", "FORWARD")

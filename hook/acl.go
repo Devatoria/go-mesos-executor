@@ -16,67 +16,71 @@ import (
 	"go.uber.org/zap"
 )
 
-const (
-	aclHookRuleTemplate = "-i %s -p %s -s %s --dport %s -j ACCEPT"
-)
+type ACLHook struct {
+	label        *regexp.Regexp
+	ruleTemplate string
+}
 
-var aclHookLabel = regexp.MustCompile("EXECUTOR_(?P<portIndex>[0-9]+)_ACL")
+func (h *ACLHook) GetName() string {
+	return "acl"
+}
 
-// ACLHook injects iptables rules into container namespace on post-run
-// to allow only some IP to access the container. This hook needs to access
-// to host procs (to mount network namespace).
-var ACLHook = Hook{
-	Name:     "acl",
-	Priority: 0,
-	RunPostRun: func(c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
-		// Do not execute the hook if we are not on bridged network
-		if info.GetContainer().GetDocker().GetNetwork() != mesos.ContainerInfo_DockerInfo_BRIDGE {
-			logger.GetInstance().Warn("ACL hook can't inject iptables rules if network mode is not bridged")
+func (h *ACLHook) GetPriority() int64 {
+	return 0
+}
 
-			return nil
-		}
+func (h *ACLHook) SetupHook() {
+	h.label = regexp.MustCompile("EXECUTOR_(?P<portIndex>[0-9]+)_ACL")
+	h.ruleTemplate = "-i %s -p %s -s %s --dport %s -j ACCEPT"
+}
 
-		driver, err := iptables.New()
-		if err != nil {
-			return err
-		}
+func (h *ACLHook) RunPostRun(containerizer container.Containerizer, taskInfo *mesos.TaskInfo, containerID string) error {
+	// Do not execute the hook if we are not on bridged network
+	if taskInfo.GetContainer().GetDocker().GetNetwork() != mesos.ContainerInfo_DockerInfo_BRIDGE {
+		logger.GetInstance().Warn("ACL hook can't inject iptables rules if network mode is not bridged")
 
-		chain, err := checkChain(driver)
-		if err != nil {
-			return err
-		}
+		return nil
+	}
 
-		return generateACL(info, chain, driver.Append, true)
+	driver, err := iptables.New()
+	if err != nil {
+		return err
+	}
 
-	},
-	RunPreStop: func(c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
-		// Do not execute the hook if we are not on bridged network
-		if info.GetContainer().GetDocker().GetNetwork() != mesos.ContainerInfo_DockerInfo_BRIDGE {
-			logger.GetInstance().Warn("ACL hook can't inject iptables rules if network mode is not bridged")
+	chain, err := h.checkChain(driver)
+	if err != nil {
+		return err
+	}
 
-			return nil
-		}
+	return h.generateACL(taskInfo, chain, driver.Append, true)
+}
 
-		driver, err := iptables.New()
-		if err != nil {
-			return err
-		}
+func (h *ACLHook) RunPreStop(containerizer container.Containerizer, taskInfo *mesos.TaskInfo, containerID string) error {
+	// Do not execute the hook if we are not on bridged network
+	if taskInfo.GetContainer().GetDocker().GetNetwork() != mesos.ContainerInfo_DockerInfo_BRIDGE {
+		logger.GetInstance().Warn("ACL hook can't inject iptables rules if network mode is not bridged")
 
-		chain, err := checkChain(driver)
-		if err != nil {
-			return err
-		}
+		return nil
+	}
 
-		return generateACL(info, chain, driver.Delete, false)
+	driver, err := iptables.New()
+	if err != nil {
+		return err
+	}
 
-	},
+	chain, err := h.checkChain(driver)
+	if err != nil {
+		return err
+	}
+
+	return h.generateACL(taskInfo, chain, driver.Delete, false)
 }
 
 // checkChain retrieves the iptables chain to use from configuration
 // checks that this chains does exists in the filter table. It then returns
 // the chain if found or an error if not found. An error is also returned if
 // the configured chain is the built-in FORWARD or OUPUT
-func checkChain(driver *iptables.IPTables) (string, error) {
+func (h *ACLHook) checkChain(driver *iptables.IPTables) (string, error) {
 	// Get acl chain
 	aclChain := viper.GetString("acl.chain")
 	if aclChain == "" {
@@ -103,7 +107,7 @@ func checkChain(driver *iptables.IPTables) (string, error) {
 
 // generateACL generates all needed iptables for access control.
 // The action function is called with each iptable generated on the specified chain.
-func generateACL(
+func (h *ACLHook) generateACL(
 	info *mesos.TaskInfo,
 	chain string,
 	action func(string, string, ...string) error,
@@ -124,7 +128,7 @@ func generateACL(
 	// Iterates over labels to find acl labels, check their value,
 	// and insert corresponding iptables
 	for _, label := range info.GetLabels().GetLabels() {
-		match := aclHookLabel.FindStringSubmatch(label.GetKey())
+		match := h.label.FindStringSubmatch(label.GetKey())
 		// Ignore labels we do not care about
 		if match == nil {
 			continue
@@ -175,7 +179,7 @@ func generateACL(
 		// Inject rules
 		for _, ip := range parsedIPs {
 			aclRule := fmt.Sprintf(
-				aclHookRuleTemplate,
+				h.ruleTemplate,
 				externalInterface,
 				portMapping.GetProtocol(),
 				ip,
@@ -196,7 +200,7 @@ func generateACL(
 		for _, cidr := range defaultAllowedCIDR {
 			for _, port := range portMappings {
 				aclRule := fmt.Sprintf(
-					aclHookRuleTemplate,
+					h.ruleTemplate,
 					externalInterface,
 					port.GetProtocol(),
 					cidr,

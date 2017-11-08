@@ -18,13 +18,13 @@ import (
 type NetnsHookTestSuite struct {
 	suite.Suite
 	c        *types.FakeContainerizer
-	hook     Hook
+	hook     NetnsHook
 	root     string
 	taskInfo *mesos.TaskInfo
 }
 
 func (s *NetnsHookTestSuite) SetupTest() {
-	s.hook = NetnsHook
+	s.hook = NetnsHook{}
 	s.c = types.NewFakeContainerizer()                                         // Generate fake containerizer
 	s.root = fmt.Sprintf("/tmp/executor-netns-test-%s", uuid.NewV4().String()) // Fake root folder
 	s.taskInfo = &mesos.TaskInfo{                                              // Task info

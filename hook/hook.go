@@ -6,13 +6,31 @@ import (
 	"github.com/mesos/mesos-go/api/v1/lib"
 )
 
-// Hook represents an executable hook (we don't care if it's a pre-create, post-stop or whatever)
-type Hook struct {
-	Name         string
-	Priority     int64
-	RunPreCreate func(container.Containerizer, *mesos.TaskInfo) error
-	RunPreRun    func(container.Containerizer, *mesos.TaskInfo, string) error
-	RunPostRun   func(container.Containerizer, *mesos.TaskInfo, string) error
-	RunPreStop   func(container.Containerizer, *mesos.TaskInfo, string) error
-	RunPostStop  func(container.Containerizer, *mesos.TaskInfo, string) error
+type RunnableHook interface {
+	GetName() string
+	GetPriority() int64
+}
+
+type SetupableHook interface {
+	SetupHook()
+}
+
+type PreCreateRunnableHook interface {
+	RunPreCreate(containerizer container.Containerizer, taskInfo *mesos.TaskInfo) error
+}
+
+type PreRunRunnableHook interface {
+	RunPreRun(containerizer container.Containerizer, taskInfo *mesos.TaskInfo, containerID string) error
+}
+
+type PostRunRunnableHook interface {
+	RunPostRun(containerizer container.Containerizer, taskInfo *mesos.TaskInfo, containerID string) error
+}
+
+type PreStopRunnableHook interface {
+	RunPreStop(containerizer container.Containerizer, taskInfo *mesos.TaskInfo, containerID string) error
+}
+
+type PostStopRunnableHook interface {
+	RunPostStop(containerizer container.Containerizer, taskInfo *mesos.TaskInfo, containerID string) error
 }

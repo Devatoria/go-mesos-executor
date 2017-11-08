@@ -58,10 +58,10 @@ var rootCmd = &cobra.Command{
 			zap.Reflect("hooks", hooks),
 		)
 		m := hook.NewManager(hooks)
-		m.RegisterHooks(&hook.ACLHook)
-		m.RegisterHooks(&hook.IptablesHook)
-		m.RegisterHooks(&hook.NetnsHook)
-		m.RegisterHooks(&hook.RemoveContainerHook)
+		m.RegisterHooks(hook.ACLHook{})
+		m.RegisterHooks(hook.IptablesHook{})
+		m.RegisterHooks(hook.NetnsHook{})
+		m.RegisterHooks(hook.RemoveContainerHook{})
 
 		// Create and run the executor
 		e := executor.NewExecutor(executor.Config{

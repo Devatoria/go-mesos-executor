@@ -15,90 +15,98 @@ import (
 	"github.com/spf13/viper"
 )
 
-const (
-	iptableHookDnatRuleTemplate           = "! -i %s -p %s -j DNAT --dport %s --to-destination %s --wait"
-	iptableHookMasqueradeRuleTemplate     = "! -o %s -s %s/32 -j MASQUERADE --wait"
-	iptableHookSelfMasqueradeRuleTemplate = "-d %s/32 -p %s -s %s/32 -j MASQUERADE --dport %s --wait"
-	iptableHookForwardInRuleTemplate      = "-d %s/32 ! -i %s -o %s -p %s -j ACCEPT --dport %s --wait"
-	iptableHookForwardOutRuleTemplate     = "-i %s ! -o %s -p %s -s %s/32 -j ACCEPT --sport %s --wait"
-)
+type IptablesHook struct {
+	dnatRuleTemplate           string
+	masqueradeRuleTemplate     string
+	selfMasqueradeRuleTemplate string
+	forwardInRuleTemplate      string
+	forwardOutRuleTemplate     string
+	containerIPCache           sync.Map
+}
 
-// containerIpCache is a map containing the containers ips. This map is useful when
-// removing iptables when containers is stopped and does not have an IP anymore.
-var iptablesHookContainerIPCache = sync.Map{}
+func (h *IptablesHook) GetName() string {
+	return "iptables"
+}
 
-// IptablesHook injects iptables rules on host. This iptables allow container masquerading
-// and network forwarding to container.
-var IptablesHook = Hook{
-	Name:     "iptables",
-	Priority: 0,
-	RunPostRun: func(c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
-		// Do not execute the hook if we are not on bridged network
-		if info.GetContainer().GetDocker().GetNetwork() != mesos.ContainerInfo_DockerInfo_BRIDGE {
-			logger.GetInstance().Warn("Insert Iptables hook can't inject iptables rules if network mode is not bridged")
+func (h *IptablesHook) GetPriority() int64 {
+	return 0
+}
 
-			return nil
-		}
+func (h *IptablesHook) SetupHook() {
+	h.dnatRuleTemplate = "! -i %s -p %s -j DNAT --dport %s --to-destination %s --wait"
+	h.masqueradeRuleTemplate = "! -o %s -s %s/32 -j MASQUERADE --wait"
+	h.selfMasqueradeRuleTemplate = "-d %s/32 -p %s -s %s/32 -j MASQUERADE --dport %s --wait"
+	h.forwardInRuleTemplate = "-d %s/32 ! -i %s -o %s -p %s -j ACCEPT --dport %s --wait"
+	h.forwardOutRuleTemplate = "-i %s ! -o %s -p %s -s %s/32 -j ACCEPT --sport %s --wait"
+}
 
-		logger.GetInstance().Debug(fmt.Sprintf("Inserting iptables on host namespace for container %s", containerID))
+func (h *IptablesHook) RunPostRun(containerizer container.Containerizer, taskInfo *mesos.TaskInfo, containerID string) error {
+	// Do not execute the hook if we are not on bridged network
+	if taskInfo.GetContainer().GetDocker().GetNetwork() != mesos.ContainerInfo_DockerInfo_BRIDGE {
+		logger.GetInstance().Warn("Insert Iptables hook can't inject iptables rules if network mode is not bridged")
 
-		driver, err := iptables.New()
-		if err != nil {
-			return err
-		}
+		return nil
+	}
 
-		portMappings := info.GetContainer().GetDocker().GetPortMappings()
+	logger.GetInstance().Debug(fmt.Sprintf("Inserting iptables on host namespace for container %s", containerID))
 
-		// Get container ip
-		containerIPs, err := c.ContainerGetIPs(containerID)
-		if err != nil {
-			return err
-		}
-		iptablesHookContainerIPCache.Store(containerID, containerIPs)
+	driver, err := iptables.New()
+	if err != nil {
+		return err
+	}
 
-		return generateIptables(containerIPs, portMappings, driver.Append, true)
-	},
-	RunPreStop: func(c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
-		// Do not execute the hook if we are not on bridged network
-		if info.GetContainer().GetDocker().GetNetwork() != mesos.ContainerInfo_DockerInfo_BRIDGE {
-			logger.GetInstance().Warn("Iptables hook does not need to remove iptables rules if network mode is not bridged")
+	portMappings := taskInfo.GetContainer().GetDocker().GetPortMappings()
 
-			return nil
-		}
+	// Get container ip
+	containerIPs, err := containerizer.ContainerGetIPs(containerID)
+	if err != nil {
+		return err
+	}
+	h.containerIPCache.Store(containerID, containerIPs)
 
-		logger.GetInstance().Debug(fmt.Sprintf("Removing iptables on host namespace for container %s", containerID))
+	return h.generateIptables(containerIPs, portMappings, driver.Append, true)
+}
 
-		driver, err := iptables.New()
-		if err != nil {
-			return err
-		}
+func (h *IptablesHook) RunPreStop(containerizer container.Containerizer, taskInfo *mesos.TaskInfo, containerID string) error {
+	// Do not execute the hook if we are not on bridged network
+	if taskInfo.GetContainer().GetDocker().GetNetwork() != mesos.ContainerInfo_DockerInfo_BRIDGE {
+		logger.GetInstance().Warn("Iptables hook does not need to remove iptables rules if network mode is not bridged")
 
-		portMappings := info.GetContainer().GetDocker().GetPortMappings()
+		return nil
+	}
 
-		// Retrieve container IPs from cache
-		ipsCacheValue, ok := iptablesHookContainerIPCache.Load(containerID)
-		if !ok {
-			return fmt.Errorf(
-				"could not find ip in cache for container %s",
-				containerID,
-			)
-		}
+	logger.GetInstance().Debug(fmt.Sprintf("Removing iptables on host namespace for container %s", containerID))
 
-		containerIPs, ok := ipsCacheValue.(map[string]net.IP)
-		if !ok {
-			return fmt.Errorf(
-				"could not load ip from cache for container %s",
-				containerID,
-			)
-		}
+	driver, err := iptables.New()
+	if err != nil {
+		return err
+	}
 
-		return generateIptables(containerIPs, portMappings, driver.Delete, false)
-	},
+	portMappings := taskInfo.GetContainer().GetDocker().GetPortMappings()
+
+	// Retrieve container IPs from cache
+	ipsCacheValue, ok := h.containerIPCache.Load(containerID)
+	if !ok {
+		return fmt.Errorf(
+			"could not find ip in cache for container %s",
+			containerID,
+		)
+	}
+
+	containerIPs, ok := ipsCacheValue.(map[string]net.IP)
+	if !ok {
+		return fmt.Errorf(
+			"could not load ip from cache for container %s",
+			containerID,
+		)
+	}
+
+	return h.generateIptables(containerIPs, portMappings, driver.Delete, false)
 }
 
 // generateIptables generates all needed iptables for containers masquerading/ network forwarding.
 // The action function is called with each iptable generated.
-func generateIptables(
+func (h *IptablesHook) generateIptables(
 	containerIPs map[string]net.IP,
 	portMappings []mesos.ContainerInfo_DockerInfo_PortMapping,
 	action func(string, string, ...string) error,
@@ -121,7 +129,7 @@ func generateIptables(
 		// container IP
 		if ipMasquerading {
 			masqueradeRule := fmt.Sprintf(
-				iptableHookMasqueradeRuleTemplate,
+				h.masqueradeRuleTemplate,
 				containerInterface,
 				containerIP.String(),
 			)
@@ -140,7 +148,7 @@ func generateIptables(
 			if ipMasquerading {
 				dnatDestination := []string{containerIP.String(), ":", strconv.Itoa(int(port.GetContainerPort()))}
 				dnatRule := fmt.Sprintf(
-					iptableHookDnatRuleTemplate,
+					h.dnatRuleTemplate,
 					containerInterface,
 					port.GetProtocol(),
 					strconv.Itoa(int(port.GetHostPort())),
@@ -159,7 +167,7 @@ func generateIptables(
 			// Insert rule for masquerading container -> container network flow
 			if ipMasquerading {
 				selfMasqueradeRule := fmt.Sprintf(
-					iptableHookSelfMasqueradeRuleTemplate,
+					h.selfMasqueradeRuleTemplate,
 					containerIP.String(),
 					port.GetProtocol(),
 					containerIP.String(),
@@ -178,7 +186,7 @@ func generateIptables(
 			if ipForward {
 				// Insert rule for forwarding incoming data on host port to container
 				forwardInRule := fmt.Sprintf(
-					iptableHookForwardInRuleTemplate,
+					h.forwardInRuleTemplate,
 					containerIP.String(),
 					containerInterface,
 					containerInterface,
@@ -196,7 +204,7 @@ func generateIptables(
 
 				// Insert rule for forwarding incoming data on host port to container
 				forwardOutRule := fmt.Sprintf(
-					iptableHookForwardOutRuleTemplate,
+					h.forwardOutRuleTemplate,
 					containerInterface,
 					containerInterface,
 					port.GetProtocol(),

@@ -31,7 +31,7 @@ type ExecutorTestSuite struct {
 	config        Config
 	containerizer *types.FakeContainerizer
 	cpusResource  mesos.Resource
-	errorHook     *hook.Hook
+	errorHook     hook.ErrorHook
 	executor      *Executor
 	executorInfo  mesos.ExecutorInfo
 	frameworkInfo mesos.FrameworkInfo
@@ -66,20 +66,7 @@ func (s *ExecutorTestSuite) SetupTest() {
 	s.containerizer = &types.FakeContainerizer{}
 
 	// Error hook
-	ferr := func(c container.Containerizer, t *mesos.TaskInfo, containerID string) error {
-		return fmt.Errorf("An error")
-	}
-	s.errorHook = &hook.Hook{
-		Name:     "error",
-		Priority: 0,
-		RunPreCreate: func(c container.Containerizer, t *mesos.TaskInfo) error {
-			return fmt.Errorf("An error")
-		},
-		RunPreRun:   ferr,
-		RunPostRun:  ferr,
-		RunPreStop:  ferr,
-		RunPostStop: ferr,
-	}
+	s.errorHook = hook.ErrorHook{}
 
 	// Hooks manager
 	s.hookManager = hook.NewManager([]string{"error"})
@@ -262,7 +249,8 @@ func (s *ExecutorTestSuite) TestHandleLaunch() {
 	assert.Equal(s.T(), *mesos.TASK_FAILED.Enum(), *pullFirstUpdate(s.executor.UnackedUpdates).Status.State) // Should be a TASK_FAILED update
 
 	// Nominal case (long-running container)
-	s.executor.HookManager.Hooks = []*hook.Hook{}                                                             // Remove previously added failing hooks
+	s.executor.HookManager.Hooks = []hook.RunnableHook{}
+
 	assert.Nil(s.T(), s.executor.handleLaunch(&ev))                                                           // Should return nil (launch successful)
 	assert.Equal(s.T(), containerName, s.executor.ContainerName)                                              // Should create the container with the given name from mesos
 	assert.NotEmpty(s.T(), s.executor.UnackedUpdates)                                                         // Should not be empty (TASK_RUNNING update)

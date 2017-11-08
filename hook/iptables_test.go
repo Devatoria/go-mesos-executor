@@ -20,7 +20,7 @@ import (
 type IptablesTestSuite struct {
 	suite.Suite
 	c                  *types.FakeContainerizer
-	hook               Hook
+	hook               IptablesHook
 	hostNamespace      netns.NsHandle
 	isolatedNamespace  netns.NsHandle
 	iptablesDriver     *iptables.IPTables
@@ -33,7 +33,7 @@ func (s *IptablesTestSuite) SetupTest() {
 	runtime.LockOSThread() // Lock thread to avoid namespace switching while testing
 
 	s.c = types.NewFakeContainerizer() // Generate fake containerizer
-	s.hook = IptablesHook
+	s.hook = IptablesHook{}
 	s.containerInterface = "docker0"
 	tcpProtocol := "tcp"
 	udpProtocol := "udp"

@@ -8,15 +8,20 @@ import (
 	"go.uber.org/zap"
 )
 
-// RemoveContainerHook removes the stopped container on post-stop
-var RemoveContainerHook = Hook{
-	Name:     "removeContainer",
-	Priority: 0,
-	RunPostStop: func(c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
-		logger.GetInstance().Info("Removing container",
-			zap.String("containerID", containerID),
-		)
+type RemoveContainerHook struct{}
 
-		return c.ContainerRemove(containerID)
-	},
+func (h *RemoveContainerHook) GetName() string {
+	return "removeContainer"
+}
+
+func (h *RemoveContainerHook) GetPriority() int64 {
+	return 0
+}
+
+func (h *RemoveContainerHook) RunPostStop(containerizer container.Containerizer, taskInfo *mesos.TaskInfo, containerID string) error {
+	logger.GetInstance().Info("Removing container",
+		zap.String("containerID", containerID),
+	)
+
+	return containerizer.ContainerRemove(containerID)
 }

@@ -20,13 +20,13 @@ import (
 // It also contains a list of enabled hooks names
 type Manager struct {
 	EnabledHooks map[string]struct{}
-	Hooks        []*Hook
+	Hooks        []RunnableHook
 }
 
 // sorter is a sort interface implementation in order to sort hooks
 type sorter struct {
-	hooks []*Hook
-	by    func(h1, h2 *Hook) bool
+	hooks []RunnableHook
+	by    func(h1, h2 RunnableHook) bool
 }
 
 type when string
@@ -67,26 +67,30 @@ func NewManager(hooks []string) *Manager {
 }
 
 // sort sorts all slices using the given by function
-func (m *Manager) sort(by func(h1, h2 *Hook) bool) {
+func (m *Manager) sort(by func(h1, h2 RunnableHook) bool) {
 	hookSorter := &sorter{m.Hooks, by}
 	sort.Sort(hookSorter)
 }
 
 // sortByPriority sorts all slices by descending priority
 func (m *Manager) sortByPriority() {
-	m.sort(func(h1, h2 *Hook) bool {
-		return !(h1.Priority < h2.Priority)
+	m.sort(func(h1, h2 RunnableHook) bool {
+		return !(h1.GetPriority() < h2.GetPriority())
 	})
 }
 
 // RegisterHooks registers a list of hooks on the given "when" (pre-create, ...)
 // It throws an error in case of the given "when" is incorrect
-func (m *Manager) RegisterHooks(hooks ...*Hook) error {
+func (m *Manager) RegisterHooks(hooks ...RunnableHook) error {
 	for _, hook := range hooks {
 		// Pass on disabled hooks
-		if _, ok := m.EnabledHooks[hook.Name]; !ok {
-			logger.GetInstance().Debug(fmt.Sprintf("Disabling %s hook", hook.Name))
+		if _, ok := m.EnabledHooks[hook.GetName()]; !ok {
+			logger.GetInstance().Debug(fmt.Sprintf("Disabling %s hook", hook.GetName()))
 			continue
+		}
+
+		if sh, ok := hook.(SetupableHook); ok {
+			sh.SetupHook()
 		}
 
 		m.Hooks = append(m.Hooks, hook)
@@ -126,48 +130,38 @@ func (m *Manager) RunPostStopHooks(c container.Containerizer, info *mesos.TaskIn
 func (m *Manager) runHooks(w when, c container.Containerizer, info *mesos.TaskInfo, containerID string, exitOnError bool) error {
 	for _, hook := range m.Hooks {
 		logger.GetInstance().Info("Running a hook",
-			zap.String("hook", hook.Name),
+			zap.String("hook", hook.GetName()),
 			zap.String("when", string(w)),
 		)
 
 		var err error
 		switch w {
 		case preCreate:
-			if hook.RunPreCreate == nil {
-				continue
+			if rh, ok := hook.(PreCreateRunnableHook); ok {
+				err = rh.RunPreCreate(c, info)
 			}
-
-			err = hook.RunPreCreate(c, info)
 		case preRun:
-			if hook.RunPreRun == nil {
-				continue
+			if rh, ok := hook.(PreRunRunnableHook); ok {
+				err = rh.RunPreRun(c, info, containerID)
 			}
-
-			err = hook.RunPreRun(c, info, containerID)
 		case postRun:
-			if hook.RunPostRun == nil {
-				continue
+			if rh, ok := hook.(PostRunRunnableHook); ok {
+				err = rh.RunPostRun(c, info, containerID)
 			}
-
-			err = hook.RunPostRun(c, info, containerID)
 		case preStop:
-			if hook.RunPreStop == nil {
-				continue
+			if rh, ok := hook.(PreStopRunnableHook); ok {
+				err = rh.RunPreStop(c, info, containerID)
 			}
-
-			err = hook.RunPreStop(c, info, containerID)
 		case postStop:
-			if hook.RunPostStop == nil {
-				continue
+			if rh, ok := hook.(PostStopRunnableHook); ok {
+				err = rh.RunPostStop(c, info, containerID)
 			}
-
-			err = hook.RunPostStop(c, info, containerID)
 		default:
 			return fmt.Errorf("")
 		}
 
 		if err != nil {
-			logger.GetInstance().Error(fmt.Sprintf("%s %s hook has failed", w, hook.Name), zap.Error(err))
+			logger.GetInstance().Error(fmt.Sprintf("%s %s hook has failed", w, hook.GetName()), zap.Error(err))
 
 			if exitOnError {
 				return err

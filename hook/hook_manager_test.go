@@ -1,75 +1,53 @@
 package hook
 
 import (
-	"fmt"
 	"testing"
 
-	"github.com/Devatoria/go-mesos-executor/container"
-
-	"github.com/mesos/mesos-go/api/v1/lib"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
 
 type HookManagerTestSuite struct {
 	suite.Suite
-	errorHook    *Hook
-	disabledHook *Hook
+	errorHook    ErrorHook
+	disabledHook disabledHook
 	manager      *Manager
-	hook         *Hook
-	priorityHook *Hook
+	hook         SampleHook
+	priorityHook priorityHook
+}
+
+type priorityHook struct{}
+
+func (h priorityHook) GetName() string {
+	return "priority"
+}
+
+func (h priorityHook) GetPriority() int64 {
+	return 100
+}
+
+type disabledHook struct{}
+
+func (h disabledHook) GetName() string {
+	return "disabled"
+}
+
+func (h disabledHook) GetPriority() int64 {
+	return 0
 }
 
 func (s *HookManagerTestSuite) SetupTest() {
-	s.manager = NewManager([]string{"sampleHook", "errorHook", "priorityHook"})
-	fnil := func(c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
-		return nil
-	}
-	ferr := func(c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
-		return fmt.Errorf("an error")
-	}
-	s.hook = &Hook{
-		Name:     "sampleHook",
-		Priority: 0,
-		RunPreCreate: func(c container.Containerizer, info *mesos.TaskInfo) error {
-			return nil
-		},
-		RunPreRun:   fnil,
-		RunPostRun:  fnil,
-		RunPreStop:  fnil,
-		RunPostStop: fnil,
-	}
-	s.errorHook = &Hook{
-		Name:     "errorHook",
-		Priority: 0,
-		RunPreCreate: func(c container.Containerizer, info *mesos.TaskInfo) error {
-			return fmt.Errorf("an error")
-		},
-		RunPreRun:   ferr,
-		RunPostRun:  ferr,
-		RunPreStop:  ferr,
-		RunPostStop: ferr,
-	}
-	s.disabledHook = &Hook{
-		Name:     "disabledHook",
-		Priority: 0,
-		RunPreCreate: func(c container.Containerizer, info *mesos.TaskInfo) error {
-			return nil
-		},
-	}
-	s.priorityHook = &Hook{
-		Name:     "priorityHook",
-		Priority: 100,
-		RunPreCreate: func(c container.Containerizer, info *mesos.TaskInfo) error {
-			return nil
-		},
-	}
+	s.manager = NewManager([]string{"sample", "error", "priority"})
+	s.hook = SampleHook{}
+	s.errorHook = ErrorHook{}
+	s.disabledHook = disabledHook{}
+	s.priorityHook = priorityHook{}
 }
 
 // Check that given enabled hooks slice is well converted to map
 func (s *HookManagerTestSuite) TestNewManager() {
 	// Enabled hooks slice should be well converted to map
-	_, ok := s.manager.EnabledHooks["sampleHook"]
+	_, ok := s.manager.EnabledHooks["sample"]
 	assert.True(s.T(), ok)
 
 	// Hooks slice should be empty
@@ -88,7 +66,7 @@ func (s *HookManagerTestSuite) TestRegister() {
 
 	// A prioritized hook should be placed before all the others in order to be ran before
 	assert.Nil(s.T(), s.manager.RegisterHooks(s.priorityHook))
-	assert.Equal(s.T(), []*Hook{s.priorityHook, s.hook}, s.manager.Hooks)
+	assert.Equal(s.T(), []RunnableHook{s.priorityHook, s.hook}, s.manager.Hooks)
 }
 
 // Check that run fuction returns nil if hook executed well, or an error if not
