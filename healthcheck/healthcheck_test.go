@@ -108,7 +108,7 @@ func (s *HealthcheckTestSuite) TestRun() {
 // Check that:
 // - Do not enter in network namespace if not in bridge network mode
 // - Result is false if server is not accessible
-// - Result is false if HTTP code is not between 200 and 399
+// - Result is false if HTTP code is not between 200 and 399 and is not wihtin custom status code
 // - Result is true otherwise
 func (s *HealthcheckTestSuite) TestCheckHTTP() {
 	// Prepare struct
@@ -176,7 +176,20 @@ func (s *HealthcheckTestSuite) TestCheckHTTP() {
 	port, _ = strconv.Atoi(portString[1])
 	s.taskInfo.HealthCheck.HTTP.Port = uint32(port)
 	go s.checker.checkHTTP(s.result)
-	assert.Equal(s.T(), true, <-s.result) // Should be unhealthy
+	assert.Equal(s.T(), true, <-s.result) // Should be healthy
+	server.Close()
+
+	// Result is ok with a custom status code
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound) // 404
+	}))
+	serverURL, _ = url.Parse(server.URL)
+	portString = strings.Split(serverURL.Host, ":")
+	port, _ = strconv.Atoi(portString[1])
+	s.taskInfo.HealthCheck.HTTP.Statuses = []uint32{404}
+	s.taskInfo.HealthCheck.HTTP.Port = uint32(port)
+	go s.checker.checkHTTP(s.result)
+	assert.Equal(s.T(), true, <-s.result) // Should be healthy
 	server.Close()
 }
 
@@ -243,7 +256,7 @@ func (s *HealthcheckTestSuite) TestCheckTCP() {
 func (s *HealthcheckTestSuite) TestCheckCommand() {
 	// Prepare struct
 	shell := true
-	value := "sleep 1"
+	value := "ls"
 	s.taskInfo.HealthCheck.Command = &mesos.CommandInfo{
 		Value: &value,
 		Shell: &shell,
@@ -265,13 +278,64 @@ func (s *HealthcheckTestSuite) TestCheckCommand() {
 	// With wrapping
 	go s.checker.checkCommand(s.result)
 	<-s.result
-	assert.Equal(s.T(), []string{"/bin/sh", "-c", s.taskInfo.GetHealthCheck().GetCommand().GetValue()}, command) // Should be wrapped into a shell
+	assert.Equal(
+		s.T(),
+		[]string{"su", "-s", "/bin/sh", "-", "root", "-c \"", s.taskInfo.GetHealthCheck().GetCommand().GetValue(), "\""},
+		command,
+	) // Should be wrapped into a shell
 
 	// Without wrapping
 	shell = false
 	go s.checker.checkCommand(s.result)
 	<-s.result
-	assert.Equal(s.T(), []string{s.taskInfo.GetHealthCheck().GetCommand().GetValue()}, command) // Should not be wrapped into a shell
+	assert.Equal(
+		s.T(),
+		[]string{"su", "-", "root", "-c \"", s.taskInfo.GetHealthCheck().GetCommand().GetValue(), "\""},
+		command) // Should not be wrapped into a shell
+
+	//With arguments
+	s.taskInfo.HealthCheck.Command.Arguments = []string{"-l", "-i", "-a"}
+	expectedCommand := []string{"su", "-", "root", "-c \"", s.taskInfo.GetHealthCheck().GetCommand().GetValue()}
+	expectedCommand = append(expectedCommand, s.taskInfo.GetHealthCheck().GetCommand().GetArguments()...)
+	expectedCommand = append(expectedCommand, "\"")
+	go s.checker.checkCommand(s.result)
+	<-s.result
+	assert.Equal(
+		s.T(),
+		expectedCommand,
+		command,
+	)
+	s.taskInfo.HealthCheck.Command.Arguments = []string{}
+
+	//With environment variables
+	s.taskInfo.HealthCheck.Command.Environment = &mesos.Environment{
+		Variables: []mesos.Environment_Variable{
+			mesos.Environment_Variable{Name: "LOGLEVEL", Value: "DEBUG"},
+		},
+	}
+	go s.checker.checkCommand(s.result)
+	<-s.result
+	assert.Equal(
+		s.T(),
+		[]string{"su", "-", "root", "-c \"", "LOGLEVEL=DEBUG", s.taskInfo.GetHealthCheck().GetCommand().GetValue(), "\""},
+		command,
+	)
+	s.taskInfo.HealthCheck.Command.Environment.Variables = []mesos.Environment_Variable{}
+
+	//With specified user
+	user := "nobody"
+	s.taskInfo.HealthCheck.Command.User = &user
+	go s.checker.checkCommand(s.result)
+	<-s.result
+	assert.Equal(
+		s.T(),
+		[]string{
+			"su", "-", s.taskInfo.GetHealthCheck().GetCommand().GetUser(),
+			"-c \"", s.taskInfo.GetHealthCheck().GetCommand().GetValue(), "\"",
+		},
+		command,
+	)
+	user = ""
 
 	// Nominal case
 	go s.checker.checkCommand(s.result)
