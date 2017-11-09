@@ -62,6 +62,7 @@ var rootCmd = &cobra.Command{
 		m.RegisterHooks(&hook.IptablesHook)
 		m.RegisterHooks(&hook.NetnsHook)
 		m.RegisterHooks(&hook.RemoveContainerHook)
+		m.RegisterHooks(&hook.PrivilegeHook)
 
 		// Create and run the executor
 		e := executor.NewExecutor(executor.Config{
