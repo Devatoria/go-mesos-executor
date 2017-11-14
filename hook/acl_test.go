@@ -2,6 +2,7 @@ package hook
 
 import (
 	"reflect"
+	"runtime"
 	"testing"
 
 	"github.com/Devatoria/go-mesos-executor/types"
@@ -27,6 +28,8 @@ type ACLHookTestSuite struct {
 }
 
 func (s *ACLHookTestSuite) SetupTest() {
+	runtime.LockOSThread() // Lock thread to avoid namespace switching while testing
+
 	s.c = types.NewFakeContainerizer() // Generate fake containerizer
 	s.hook = ACLHook                   // Retrieve hook
 
@@ -73,6 +76,7 @@ func (s *ACLHookTestSuite) TearDownTest() {
 	s.isolatedNamespace.Close()
 	s.hostNamespace.Close()
 
+	runtime.UnlockOSThread() // Unlock thread now that we've finished
 }
 
 // Check that:
