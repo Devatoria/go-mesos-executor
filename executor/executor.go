@@ -169,7 +169,7 @@ func (e *Executor) Execute() error {
 				"Failed to register to the agent. Will retry after %s",
 				registerDelay.String(),
 			))
-			<-time.After(registerDelay * time.Millisecond)
+			<-time.After(registerDelay)
 			continue
 		}
 
