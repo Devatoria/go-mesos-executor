@@ -56,7 +56,7 @@ var IptablesHook = Hook{
 		}
 		iptablesHookContainerIPCache.Store(containerID, containerIPs)
 
-		return generateIptables(containerIPs, portMappings, driver.Append, true)
+		return generateIptables(containerIPs, portMappings, driver, driver.Append, true)
 	},
 	RunPreStop: func(c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
 		// Do not execute the hook if we are not on bridged network
@@ -92,7 +92,7 @@ var IptablesHook = Hook{
 			)
 		}
 
-		return generateIptables(containerIPs, portMappings, driver.Delete, false)
+		return generateIptables(containerIPs, portMappings, driver, driver.Delete, false)
 	},
 }
 
@@ -101,19 +101,39 @@ var IptablesHook = Hook{
 func generateIptables(
 	containerIPs map[string]net.IP,
 	portMappings []mesos.ContainerInfo_DockerInfo_PortMapping,
+	driver *iptables.IPTables,
 	action func(string, string, ...string) error,
 	stopOnError bool) error {
+	var err error
+
 	// Get docker interface
 	containerInterface := viper.GetString("iptables.container_bridge_interface")
 	if containerInterface == "" {
 		return fmt.Errorf("could not retrieve container brigde interface")
 	}
 
+	// Check if hook dedicated chains exist
+	preroutingChain := viper.GetString("iptables.chains.prerouting")
+	_, err = driver.List("nat", preroutingChain)
+	if err != nil {
+		return fmt.Errorf("%s prerouting chain doesn't exist in nat table", preroutingChain)
+	}
+
+	forwardChain := viper.GetString("iptables.chains.forward")
+	_, err = driver.List("filter", forwardChain)
+	if err != nil {
+		return fmt.Errorf("%s forward chain doesn't exist in filter table", forwardChain)
+	}
+
+	postroutingChain := viper.GetString("iptables.chains.postrouting")
+	_, err = driver.List("nat", postroutingChain)
+	if err != nil {
+		return fmt.Errorf("%s postrouting chain doesn't exist in nat table", postroutingChain)
+	}
+
 	ipForward := viper.GetBool("iptables.ip_forwarding")
 	ipMasquerading := viper.GetBool("iptables.ip_masquerading")
 
-	// Init errors
-	var err error
 	// Iterate over all container IPs, and for each IP, iterate on container/host binded ports.
 	// Insert needed iptables for each IP and port.
 	for _, containerIP := range containerIPs {
@@ -125,7 +145,7 @@ func generateIptables(
 				containerInterface,
 				containerIP.String(),
 			)
-			err = action("nat", "POSTROUTING", strings.Split(masqueradeRule, " ")...)
+			err = action("nat", postroutingChain, strings.Split(masqueradeRule, " ")...)
 			if err != nil {
 				if stopOnError {
 					return err
@@ -136,8 +156,8 @@ func generateIptables(
 		}
 
 		for _, port := range portMappings {
-			// Insert rule for translating incoming data on host port to container
 			if ipMasquerading {
+				// Insert rule for translating incoming data on host port to container
 				dnatDestination := []string{containerIP.String(), ":", strconv.Itoa(int(port.GetContainerPort()))}
 				dnatRule := fmt.Sprintf(
 					iptableHookDnatRuleTemplate,
@@ -146,7 +166,7 @@ func generateIptables(
 					strconv.Itoa(int(port.GetHostPort())),
 					strings.Join(dnatDestination, ""),
 				)
-				err = action("nat", "PREROUTING", strings.Split(dnatRule, " ")...)
+				err = action("nat", preroutingChain, strings.Split(dnatRule, " ")...)
 				if err != nil {
 					if stopOnError {
 						return err
@@ -154,10 +174,8 @@ func generateIptables(
 
 					logger.GetInstance().Warn(err.Error())
 				}
-			}
 
-			// Insert rule for masquerading container -> container network flow
-			if ipMasquerading {
+				// Insert rule for masquerading container -> container network flow
 				selfMasqueradeRule := fmt.Sprintf(
 					iptableHookSelfMasqueradeRuleTemplate,
 					containerIP.String(),
@@ -165,7 +183,7 @@ func generateIptables(
 					containerIP.String(),
 					strconv.Itoa(int(port.GetContainerPort())),
 				)
-				err = action("nat", "POSTROUTING", strings.Split(selfMasqueradeRule, " ")...)
+				err = action("nat", postroutingChain, strings.Split(selfMasqueradeRule, " ")...)
 				if err != nil {
 					if stopOnError {
 						return err
@@ -185,7 +203,7 @@ func generateIptables(
 					port.GetProtocol(),
 					strconv.Itoa(int(port.GetContainerPort())),
 				)
-				err = action("filter", "FORWARD", strings.Split(forwardInRule, " ")...)
+				err = action("filter", forwardChain, strings.Split(forwardInRule, " ")...)
 				if err != nil {
 					if stopOnError {
 						return err
@@ -203,7 +221,7 @@ func generateIptables(
 					containerIP.String(),
 					strconv.Itoa(int(port.GetContainerPort())),
 				)
-				err = action("filter", "FORWARD", strings.Split(forwardOutRule, " ")...)
+				err = action("filter", forwardChain, strings.Split(forwardOutRule, " ")...)
 				if err != nil {
 					if stopOnError {
 						return err
