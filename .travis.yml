@@ -1,0 +1,9 @@
+dist: precise
+sudo: required
+language: go
+go:
+  - 1.9
+before_install:
+  - go get -u github.com/alecthomas/gometalinter
+  - gometalinter --install
+script: sudo -E env "PATH=$PATH" make test && make lint
