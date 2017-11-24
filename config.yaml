@@ -7,7 +7,13 @@ hooks: # Enabled hooks
 proc_path: /mnt/proc # Mount path of host proc folder
 registering_retry: 100ms # Time to wait before two registering retry
 iptables:
+  chains:
+    prerouting: EXECUTOR-PREROUTING
+    forward: EXECUTOR-FORWARD
+    postrouting: EXECUTOR-POSTROUTING
   container_bridge_interface: docker0 # Brigde interface for container network
+  ip_forwarding: true
+  ip_masquerading: true
 acl:
   chain: MYCHAIN
   default_allowed_cidr: # Set of default IP (with CIDR) to allow
