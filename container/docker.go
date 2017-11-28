@@ -7,11 +7,14 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Devatoria/go-mesos-executor/logger"
 
-	"github.com/fsouza/go-dockerclient"
-	"github.com/mesos/mesos-go/api/v1/lib"
+	docker "github.com/fsouza/go-dockerclient"
+	mesos "github.com/mesos/mesos-go/api/v1/lib"
+	"github.com/spf13/viper"
+
 	"go.uber.org/zap"
 )
 
@@ -185,6 +188,11 @@ func (c *DockerContainerizer) ContainerGetIPs(id string) (map[string]net.IP, err
 func (c *DockerContainerizer) ContainerExec(ctx context.Context, id string, cmd []string) chan error {
 	result := make(chan error)
 	go func(r chan error) {
+		logger.GetInstance().Debug("Create a docker exec with options",
+			zap.Bool("attachStderr", true),
+			zap.Strings("cmd", cmd),
+			zap.String("containerID", id),
+		)
 		// Create the exec instance
 		ex, err := c.Client.CreateExec(docker.CreateExecOptions{
 			AttachStderr: true,
@@ -193,19 +201,58 @@ func (c *DockerContainerizer) ContainerExec(ctx context.Context, id string, cmd 
 		})
 		if err != nil {
 			r <- err
+			return
 		}
 
 		// Start the instance in a goroutine in order to be async
 		var stderr bytes.Buffer
+		logger.GetInstance().Debug("start dockerExec previously created",
+			zap.String("execID", ex.ID),
+		)
 		err = c.Client.StartExec(ex.ID, docker.StartExecOptions{
 			ErrorStream: &stderr,
 			Context:     ctx,
 		})
+		if err != nil {
+			r <- err
+			return
+		}
 
-		r <- err
+		// poll docker for exec result
+		for {
+			select {
+			case <-ctx.Done():
+				// check one last time if it still running ?
+			default:
+				time.Sleep(viper.GetDuration("docker_exec_poll_interval"))
+				c.checkExec(ex.ID, r)
+			}
+		}
 	}(result)
 
 	return result
+}
+
+func (c *DockerContainerizer) checkExec(execID string, returnChan chan error) {
+	execResult, err := c.Client.InspectExec(execID)
+	if err != nil {
+		returnChan <- err
+		return
+	}
+	logger.GetInstance().Debug("Inspect exec",
+		zap.String("execID", execResult.ID),
+		zap.Int("exitCode", execResult.ExitCode),
+		zap.Bool("Running", execResult.Running),
+	)
+	if !execResult.Running {
+		if execResult.ExitCode == 0 {
+			// all good, command return zero
+			returnChan <- nil
+		} else {
+			returnChan <- fmt.Errorf("Non zero return code got %d", execResult.ExitCode)
+		}
+		return
+	}
 }
 
 // ContainerWait waits for the given container to stop and returns its

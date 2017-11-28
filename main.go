@@ -108,6 +108,8 @@ func init() {
 	viper.BindPFlag("proc_path", rootCmd.PersistentFlags().Lookup("proc_path"))
 	rootCmd.PersistentFlags().Duration("registering_retry", 100*time.Millisecond, "Executor registering delay in duration")
 	viper.BindPFlag("registering_retry", rootCmd.PersistentFlags().Lookup("registering_retry"))
+	rootCmd.PersistentFlags().Duration("docker_exec_poll_interval", 1*time.Second, "Rate of docker exec polling for result")
+	viper.BindPFlag("docker_exec_poll_interval", rootCmd.PersistentFlags().Lookup("docker_exec_poll_interval"))
 
 	// Iptables hook
 	viper.SetDefault("iptables.ip_forwarding", true)
