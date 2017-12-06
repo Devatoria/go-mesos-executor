@@ -26,6 +26,7 @@ type IptablesTestSuite struct {
 	iptablesDriver     *iptables.IPTables
 	containerInterface string
 	taskInfo           *mesos.TaskInfo
+	frameworkInfo      *mesos.FrameworkInfo
 	containerIPs       map[string]net.IP
 	preroutingChain    string
 	forwardChain       string
@@ -151,7 +152,7 @@ func (s *IptablesTestSuite) TestIptablesHookRunPostRun() {
 
 	// Injection should not be executed if the network is not in bridge mode
 	info := &mesos.TaskInfo{}
-	assert.Nil(s.T(), s.hook.RunPostRun(s.c, info, ""))
+	assert.Nil(s.T(), s.hook.RunPostRun(s.c, info, s.frameworkInfo, ""))
 
 	forwardRules, _ := s.iptablesDriver.List("filter", s.forwardChain)
 	postRoutingRules, _ := s.iptablesDriver.List("nat", s.postroutingChain)
@@ -177,7 +178,7 @@ func (s *IptablesTestSuite) TestIptablesHookRunPostRun() {
 
 	// Now test for each table and chain that rule are correctly inserted,
 	// next to the previous network states
-	assert.Nil(s.T(), s.hook.RunPostRun(s.c, s.taskInfo, ""))
+	assert.Nil(s.T(), s.hook.RunPostRun(s.c, s.taskInfo, s.frameworkInfo, ""))
 	forwardRules, _ = s.iptablesDriver.List("filter", s.forwardChain)
 	assert.Subset(
 		s.T(),
@@ -240,13 +241,13 @@ func (s *IptablesTestSuite) TestIptablesHookRunPreStop() {
 
 	// Removing should not be executed if the network is not in bridge mode
 	info := &mesos.TaskInfo{}
-	assert.Nil(s.T(), s.hook.RunPreStop(s.c, info, ""))
+	assert.Nil(s.T(), s.hook.RunPreStop(s.c, info, s.frameworkInfo, ""))
 
 	// Execute insert iptables hook to insert iptables
-	s.hook.RunPostRun(s.c, s.taskInfo, "")
+	s.hook.RunPostRun(s.c, s.taskInfo, s.frameworkInfo, "")
 
 	// Execute remove iptables hook to remove inserted iptables
-	assert.Nil(s.T(), s.hook.RunPreStop(s.c, s.taskInfo, ""))
+	assert.Nil(s.T(), s.hook.RunPreStop(s.c, s.taskInfo, s.frameworkInfo, ""))
 	forwardRules, _ := s.iptablesDriver.List("filter", s.forwardChain)
 	postRoutingRules, _ := s.iptablesDriver.List("nat", s.postroutingChain)
 	preRoutingRules, _ := s.iptablesDriver.List("nat", s.preroutingChain)

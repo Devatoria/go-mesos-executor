@@ -28,9 +28,9 @@ var aclHookLabel = regexp.MustCompile("EXECUTOR_(?P<portIndex>[0-9]+)_ACL")
 var ACLHook = Hook{
 	Name:     "acl",
 	Priority: 0,
-	RunPostRun: func(c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
+	RunPostRun: func(c container.Containerizer, taskInfo *mesos.TaskInfo, frameworkInfo *mesos.FrameworkInfo, containerID string) error {
 		// Do not execute the hook if we are not on bridged network
-		if info.GetContainer().GetDocker().GetNetwork() != mesos.ContainerInfo_DockerInfo_BRIDGE {
+		if taskInfo.GetContainer().GetDocker().GetNetwork() != mesos.ContainerInfo_DockerInfo_BRIDGE {
 			logger.GetInstance().Warn("ACL hook can't inject iptables rules if network mode is not bridged")
 
 			return nil
@@ -46,12 +46,12 @@ var ACLHook = Hook{
 			return err
 		}
 
-		return generateACL(info, chain, driver.Append, true)
+		return generateACL(taskInfo, chain, driver.Append, true)
 
 	},
-	RunPreStop: func(c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
+	RunPreStop: func(c container.Containerizer, taskInfo *mesos.TaskInfo, frameworkInfo *mesos.FrameworkInfo, containerID string) error {
 		// Do not execute the hook if we are not on bridged network
-		if info.GetContainer().GetDocker().GetNetwork() != mesos.ContainerInfo_DockerInfo_BRIDGE {
+		if taskInfo.GetContainer().GetDocker().GetNetwork() != mesos.ContainerInfo_DockerInfo_BRIDGE {
 			logger.GetInstance().Warn("ACL hook can't inject iptables rules if network mode is not bridged")
 
 			return nil
@@ -67,7 +67,7 @@ var ACLHook = Hook{
 			return err
 		}
 
-		return generateACL(info, chain, driver.Delete, false)
+		return generateACL(taskInfo, chain, driver.Delete, false)
 
 	},
 }

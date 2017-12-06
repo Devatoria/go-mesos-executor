@@ -32,9 +32,9 @@ var iptablesHookContainerIPCache = sync.Map{}
 var IptablesHook = Hook{
 	Name:     "iptables",
 	Priority: 0,
-	RunPostRun: func(c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
+	RunPostRun: func(c container.Containerizer, taskInfo *mesos.TaskInfo, frameworkInfo *mesos.FrameworkInfo, containerID string) error {
 		// Do not execute the hook if we are not on bridged network
-		if info.GetContainer().GetDocker().GetNetwork() != mesos.ContainerInfo_DockerInfo_BRIDGE {
+		if taskInfo.GetContainer().GetDocker().GetNetwork() != mesos.ContainerInfo_DockerInfo_BRIDGE {
 			logger.GetInstance().Warn("Insert Iptables hook can't inject iptables rules if network mode is not bridged")
 
 			return nil
@@ -47,7 +47,7 @@ var IptablesHook = Hook{
 			return err
 		}
 
-		portMappings := info.GetContainer().GetDocker().GetPortMappings()
+		portMappings := taskInfo.GetContainer().GetDocker().GetPortMappings()
 
 		// Get container ip
 		containerIPs, err := c.ContainerGetIPs(containerID)
@@ -58,9 +58,9 @@ var IptablesHook = Hook{
 
 		return generateIptables(containerIPs, portMappings, driver, driver.Append, true)
 	},
-	RunPreStop: func(c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
+	RunPreStop: func(c container.Containerizer, taskInfo *mesos.TaskInfo, frameworkInfo *mesos.FrameworkInfo, containerID string) error {
 		// Do not execute the hook if we are not on bridged network
-		if info.GetContainer().GetDocker().GetNetwork() != mesos.ContainerInfo_DockerInfo_BRIDGE {
+		if taskInfo.GetContainer().GetDocker().GetNetwork() != mesos.ContainerInfo_DockerInfo_BRIDGE {
 			logger.GetInstance().Warn("Iptables hook does not need to remove iptables rules if network mode is not bridged")
 
 			return nil
@@ -73,7 +73,7 @@ var IptablesHook = Hook{
 			return err
 		}
 
-		portMappings := info.GetContainer().GetDocker().GetPortMappings()
+		portMappings := taskInfo.GetContainer().GetDocker().GetPortMappings()
 
 		// Retrieve container IPs from cache
 		ipsCacheValue, ok := iptablesHookContainerIPCache.Load(containerID)

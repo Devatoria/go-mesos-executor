@@ -10,9 +10,9 @@ import (
 type Hook struct {
 	Name         string
 	Priority     int64
-	RunPreCreate func(container.Containerizer, *mesos.TaskInfo) error
-	RunPreRun    func(container.Containerizer, *mesos.TaskInfo, string) error
-	RunPostRun   func(container.Containerizer, *mesos.TaskInfo, string) error
-	RunPreStop   func(container.Containerizer, *mesos.TaskInfo, string) error
-	RunPostStop  func(container.Containerizer, *mesos.TaskInfo, string) error
+	RunPreCreate func(container.Containerizer, *mesos.TaskInfo, *mesos.FrameworkInfo) error
+	RunPreRun    func(container.Containerizer, *mesos.TaskInfo, *mesos.FrameworkInfo, string) error
+	RunPostRun   func(container.Containerizer, *mesos.TaskInfo, *mesos.FrameworkInfo, string) error
+	RunPreStop   func(container.Containerizer, *mesos.TaskInfo, *mesos.FrameworkInfo, string) error
+	RunPostStop  func(container.Containerizer, *mesos.TaskInfo, *mesos.FrameworkInfo, string) error
 }

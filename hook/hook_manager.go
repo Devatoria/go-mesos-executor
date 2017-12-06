@@ -99,31 +99,31 @@ func (m *Manager) RegisterHooks(hooks ...*Hook) error {
 }
 
 // RunPreCreateHooks runs all pre-create hooks of the given manager
-func (m *Manager) RunPreCreateHooks(c container.Containerizer, info *mesos.TaskInfo) error {
-	return m.runHooks(preCreate, c, info, "", true)
+func (m *Manager) RunPreCreateHooks(c container.Containerizer, taskInfo *mesos.TaskInfo, frameworkInfo *mesos.FrameworkInfo) error {
+	return m.runHooks(preCreate, c, taskInfo, frameworkInfo, "", true)
 }
 
 // RunPreRunHooks runs all pre-create hooks of the given manager
-func (m *Manager) RunPreRunHooks(c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
-	return m.runHooks(preRun, c, info, containerID, true)
+func (m *Manager) RunPreRunHooks(c container.Containerizer, taskInfo *mesos.TaskInfo, frameworkInfo *mesos.FrameworkInfo, containerID string) error {
+	return m.runHooks(preRun, c, taskInfo, frameworkInfo, containerID, true)
 }
 
 // RunPostRunHooks runs all pre-create hooks of the given manager
-func (m *Manager) RunPostRunHooks(c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
-	return m.runHooks(postRun, c, info, containerID, true)
+func (m *Manager) RunPostRunHooks(c container.Containerizer, taskInfo *mesos.TaskInfo, frameworkInfo *mesos.FrameworkInfo, containerID string) error {
+	return m.runHooks(postRun, c, taskInfo, frameworkInfo, containerID, true)
 }
 
 // RunPreStopHooks runs all pre-create hooks of the given manager
-func (m *Manager) RunPreStopHooks(c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
-	return m.runHooks(preStop, c, info, containerID, false)
+func (m *Manager) RunPreStopHooks(c container.Containerizer, taskInfo *mesos.TaskInfo, frameworkInfo *mesos.FrameworkInfo, containerID string) error {
+	return m.runHooks(preStop, c, taskInfo, frameworkInfo, containerID, false)
 }
 
 // RunPostStopHooks runs all pre-create hooks of the given manager
-func (m *Manager) RunPostStopHooks(c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
-	return m.runHooks(postStop, c, info, containerID, false)
+func (m *Manager) RunPostStopHooks(c container.Containerizer, taskInfo *mesos.TaskInfo, frameworkInfo *mesos.FrameworkInfo, containerID string) error {
+	return m.runHooks(postStop, c, taskInfo, frameworkInfo, containerID, false)
 }
 
-func (m *Manager) runHooks(w when, c container.Containerizer, info *mesos.TaskInfo, containerID string, exitOnError bool) error {
+func (m *Manager) runHooks(w when, c container.Containerizer, taskInfo *mesos.TaskInfo, frameworkInfo *mesos.FrameworkInfo, containerID string, exitOnError bool) error {
 	for _, hook := range m.Hooks {
 		logger.GetInstance().Info("Running a hook",
 			zap.String("hook", hook.Name),
@@ -137,31 +137,31 @@ func (m *Manager) runHooks(w when, c container.Containerizer, info *mesos.TaskIn
 				continue
 			}
 
-			err = hook.RunPreCreate(c, info)
+			err = hook.RunPreCreate(c, taskInfo, frameworkInfo)
 		case preRun:
 			if hook.RunPreRun == nil {
 				continue
 			}
 
-			err = hook.RunPreRun(c, info, containerID)
+			err = hook.RunPreRun(c, taskInfo, frameworkInfo, containerID)
 		case postRun:
 			if hook.RunPostRun == nil {
 				continue
 			}
 
-			err = hook.RunPostRun(c, info, containerID)
+			err = hook.RunPostRun(c, taskInfo, frameworkInfo, containerID)
 		case preStop:
 			if hook.RunPreStop == nil {
 				continue
 			}
 
-			err = hook.RunPreStop(c, info, containerID)
+			err = hook.RunPreStop(c, taskInfo, frameworkInfo, containerID)
 		case postStop:
 			if hook.RunPostStop == nil {
 				continue
 			}
 
-			err = hook.RunPostStop(c, info, containerID)
+			err = hook.RunPostStop(c, taskInfo, frameworkInfo, containerID)
 		default:
 			return fmt.Errorf("")
 		}

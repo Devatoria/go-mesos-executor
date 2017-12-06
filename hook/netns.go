@@ -21,7 +21,7 @@ var (
 var NetnsHook = Hook{
 	Name:     "netns",
 	Priority: 0,
-	RunPostRun: func(c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
+	RunPostRun: func(c container.Containerizer, taskInfo *mesos.TaskInfo, frameworkInfo *mesos.FrameworkInfo, containerID string) error {
 		// Get (and store) container PID
 		pid, err := c.ContainerGetPID(containerID)
 		if err != nil {
@@ -36,11 +36,11 @@ var NetnsHook = Hook{
 
 		// Create symlink
 		nspath := fmt.Sprintf("%s/%d/ns/net", viper.GetString("proc_path"), netnsHookContainerPID)
-		netnsHookSymlinkPath = fmt.Sprintf("%s/%s", viper.GetString("netns.path"), info.TaskID.GetValue())
+		netnsHookSymlinkPath = fmt.Sprintf("%s/%s", viper.GetString("netns.path"), taskInfo.TaskID.GetValue())
 
 		return os.Symlink(nspath, netnsHookSymlinkPath)
 	},
-	RunPostStop: func(c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
+	RunPostStop: func(c container.Containerizer, taskInfo *mesos.TaskInfo, frameworkInfo *mesos.FrameworkInfo, containerID string) error {
 		return os.Remove(netnsHookSymlinkPath)
 	},
 }
