@@ -57,16 +57,6 @@ func (s *DockerContainerizerTestSuite) SetupTest() {
 		State: docker.State{
 			Pid: 1024,
 		},
-		NetworkSettings: &docker.NetworkSettings{
-			Networks: map[string]docker.ContainerNetwork{
-				"bridge": docker.ContainerNetwork{
-					IPAddress: "172.0.2.1",
-				},
-				"user_network": docker.ContainerNetwork{
-					IPAddress: "172.0.3.1",
-				},
-			},
-		},
 	}
 
 	monkey.PatchInstanceMethod(
@@ -195,6 +185,22 @@ func (s *DockerContainerizerTestSuite) TestDockerContainerCreate() {
 	s.info.TaskInfo.Container.Docker.Network = &invalidNetwork
 	_, err = s.dc.ContainerCreate(s.info)
 	assert.NotNil(s.T(), err)
+
+	// User defined network
+	var userNetwork mesos.ContainerInfo_DockerInfo_Network = 4
+	userNetworkName := "myUserNetwork"
+	s.info.TaskInfo.Container.NetworkInfos = []mesos.NetworkInfo{
+		mesos.NetworkInfo{
+			Name: &userNetworkName,
+		},
+	}
+	s.info.TaskInfo.Container.Docker.Network = &userNetwork
+	_, err = s.dc.ContainerCreate(s.info)
+	assert.Nil(s.T(), err)
+	if err = json.Unmarshal(s.req.body, &result); err != nil {
+		s.T().Fatal(err)
+	}
+	assert.Equal(s.T(), userNetworkName, result.HostConfig.NetworkMode)
 }
 
 // Check that returns nil if everything is ok
@@ -225,45 +231,73 @@ func (s *DockerContainerizerTestSuite) TestDockerContainerGetPID() {
 	assert.Equal(s.T(), s.container.State.Pid, pid)
 }
 
-// Check that returns ips in all networks
-// Check that returns empty map when container is in host mode
-func (s *DockerContainerizerTestSuite) TestDockerContainerGetIPs() {
-	// Check that returns ips in all networks
-	ips, err := s.dc.ContainerGetIPs("abcdef1234")
+// Chekc that returns IP correctly
+func (s *DockerContainerizerTestSuite) TestDockerContainerGetIPsByInterface() {
+	monkey.Patch(
+		net.InterfaceByName,
+		func(id string) (*net.Interface, error) {
+			i := net.Interface{
+				Name: "hostInterface",
+			}
+			return &i, nil
+		},
+	)
+
+	// Interfaces of the containers
+	monkey.Patch(
+		net.Interfaces,
+		func() ([]net.Interface, error) {
+			i := []net.Interface{
+				net.Interface{
+					Name: "firstContainerInterface",
+				},
+				net.Interface{
+					Name: "secondContainerInterface",
+				},
+			}
+			return i, nil
+		},
+	)
+	monkey.PatchInstanceMethod(
+		reflect.TypeOf(&net.Interface{}),
+		"Addrs",
+		func(networkInterface *net.Interface) ([]net.Addr, error) {
+			switch networkInterface.Name {
+			case "hostInterface":
+				return []net.Addr{
+					&net.IPNet{
+						IP:   net.ParseIP("172.168.0.0"),
+						Mask: net.IPMask(net.ParseIP("255.255.0.0")),
+					},
+				}, nil
+			case "firstContainerInterface":
+				return []net.Addr{
+					&net.IPNet{
+						IP:   net.ParseIP("172.168.0.34"),
+						Mask: net.IPMask(net.ParseIP("255.255.0.0")),
+					},
+				}, nil
+			case "secondContainerInterface":
+				return []net.Addr{
+					&net.IPNet{
+						IP:   net.ParseIP("172.34.0.45"),
+						Mask: net.IPMask(net.ParseIP("255.255.0.0")),
+					},
+				}, nil
+			}
+			return []net.Addr{}, nil
+		},
+	)
+	ips, err := s.dc.ContainerGetIPsByInterface("abcdef1234", "hostInterface")
 	assert.Nil(s.T(), err)
 	assert.Equal(
 		s.T(),
-		map[string]net.IP{
-			"bridge":       net.ParseIP(s.container.NetworkSettings.Networks["bridge"].IPAddress),
-			"user_network": net.ParseIP(s.container.NetworkSettings.Networks["user_network"].IPAddress),
+		[]net.IP{
+			net.ParseIP("172.168.0.34"),
 		},
 		ips,
 	)
 
-	// Check that returns empty map when container is in host mode
-	monkey.PatchInstanceMethod(
-		reflect.TypeOf(s.dc.Client),
-		"InspectContainer",
-		func(_ *docker.Client, id string) (*docker.Container, error) {
-			return &docker.Container{
-				State: docker.State{
-					Pid: 1024,
-				},
-				NetworkSettings: &docker.NetworkSettings{
-					Networks: map[string]docker.ContainerNetwork{
-						"host": docker.ContainerNetwork{},
-					},
-				},
-			}, nil
-		},
-	)
-	ips, err = s.dc.ContainerGetIPs("abcdef1234")
-	assert.Nil(s.T(), err)
-	assert.Equal(
-		s.T(),
-		map[string]net.IP{},
-		ips,
-	)
 }
 
 func TestDockerContainerizerSuite(t *testing.T) {

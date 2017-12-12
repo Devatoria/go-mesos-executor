@@ -30,8 +30,9 @@ var ACLHook = Hook{
 	Priority: 0,
 	RunPostRun: func(c container.Containerizer, taskInfo *mesos.TaskInfo, frameworkInfo *mesos.FrameworkInfo, containerID string) error {
 		// Do not execute the hook if we are not on bridged network
-		if taskInfo.GetContainer().GetDocker().GetNetwork() != mesos.ContainerInfo_DockerInfo_BRIDGE {
-			logger.GetInstance().Warn("ACL hook can't inject iptables rules if network mode is not bridged")
+		network := taskInfo.GetContainer().GetDocker().GetNetwork()
+		if network != mesos.ContainerInfo_DockerInfo_BRIDGE && network != mesos.ContainerInfo_DockerInfo_USER {
+			logger.GetInstance().Warn("ACL hook can't inject iptables rules if network mode is not bridge or user")
 
 			return nil
 		}
@@ -51,8 +52,9 @@ var ACLHook = Hook{
 	},
 	RunPreStop: func(c container.Containerizer, taskInfo *mesos.TaskInfo, frameworkInfo *mesos.FrameworkInfo, containerID string) error {
 		// Do not execute the hook if we are not on bridged network
-		if taskInfo.GetContainer().GetDocker().GetNetwork() != mesos.ContainerInfo_DockerInfo_BRIDGE {
-			logger.GetInstance().Warn("ACL hook can't inject iptables rules if network mode is not bridged")
+		network := taskInfo.GetContainer().GetDocker().GetNetwork()
+		if network == mesos.ContainerInfo_DockerInfo_NONE || network == mesos.ContainerInfo_DockerInfo_BRIDGE {
+			logger.GetInstance().Warn("ACL hook does not need to remove iptables rules if network mode is not bridge or user")
 
 			return nil
 		}

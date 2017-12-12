@@ -27,7 +27,7 @@ type IptablesTestSuite struct {
 	containerInterface string
 	taskInfo           *mesos.TaskInfo
 	frameworkInfo      *mesos.FrameworkInfo
-	containerIPs       map[string]net.IP
+	containerIPs       []net.IP
 	preroutingChain    string
 	forwardChain       string
 	postroutingChain   string
@@ -64,9 +64,9 @@ func (s *IptablesTestSuite) SetupTest() {
 		},
 	}
 
-	s.containerIPs = map[string]net.IP{
-		"bridge":       net.ParseIP("172.0.2.1"),
-		"user_network": net.ParseIP("172.0.3.1"),
+	s.containerIPs = []net.IP{
+		net.ParseIP("172.0.2.1"),
+		net.ParseIP("172.0.3.1"),
 	}
 	hostNs, _ := netns.Get() // Get current namespace
 	s.hostNamespace = hostNs
@@ -82,8 +82,8 @@ func (s *IptablesTestSuite) SetupTest() {
 
 	monkey.PatchInstanceMethod(
 		reflect.TypeOf(s.c),
-		"ContainerGetIPs",
-		func(_ *types.FakeContainerizer, id string) (map[string]net.IP, error) {
+		"ContainerGetIPsByInterface",
+		func(_ *types.FakeContainerizer, id string, interfaceName string) ([]net.IP, error) {
 			return s.containerIPs, nil
 		},
 	)
@@ -142,7 +142,7 @@ func (s *IptablesTestSuite) TearDownTest() {
 }
 
 // Check that :
-// - hook does nothing if container is in host mode
+// - hook does nothing if container is not in bridge or user mode
 // - iptables are correctly injected on at hook execution
 func (s *IptablesTestSuite) TestIptablesHookRunPostRun() {
 	// Store the state of the namespace network
@@ -231,7 +231,7 @@ func (s *IptablesTestSuite) TestIptablesHookRunPostRun() {
 }
 
 // Check that :
-// - hook does nothing when container is in host network
+// - hook does nothing when container is not in bridge or user mode
 // - iptables are correctly removed at task hook execution
 func (s *IptablesTestSuite) TestIptablesHookRunPreStop() {
 	// Store the state of the namespace network

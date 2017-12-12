@@ -36,11 +36,12 @@ services:
       - zookeeper
       - mesos_master
   marathon:
-    image: mesosphere/marathon:v1.4.3
+    image: mesosphere/marathon:v1.5.1
     network_mode: host
     environment:
       MARATHON_MASTER: "zk://localhost:2181/mesos"
       MARATHON_ZK: "zk://localhost:2181/marathon"
+      MARATHON_FRAMEWORK_NAME: "my-marathon"
     depends_on:
       - zookeeper
       - mesos_master

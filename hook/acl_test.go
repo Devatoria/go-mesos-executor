@@ -81,7 +81,7 @@ func (s *ACLHookTestSuite) TearDownTest() {
 }
 
 // Check that:
-// - an error is thrown if network is not set to bridged
+// - an error is thrown if network is not set to bridge or user
 // - nothing is done if the label is absent from info
 // - an error is thrown if label port index does not match port mapping
 // - an error is thrown if label has no value
