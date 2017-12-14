@@ -30,7 +30,7 @@ var NetnsHook = Hook{
 		netnsHookContainerPID = pid
 
 		// Create netns folder if doesn't exist
-		if err = os.Mkdir(viper.GetString("netns.path"), 0755); err != nil && !os.IsExist(err) {
+		if err = os.Mkdir(viper.GetString("netns.path"), 0700); err != nil && !os.IsExist(err) {
 			return err
 		}
 

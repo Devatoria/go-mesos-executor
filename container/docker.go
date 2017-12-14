@@ -196,7 +196,6 @@ func (c *DockerContainerizer) ContainerGetIPsByInterface(id string, hostInterfac
 
 	// Iterate over the host interface IPs
 	for _, hostIPAddr := range hostInterfaceIPs {
-
 		// Retrieve the network corresponding to the host interface ip
 		hostIPNet, ok := hostIPAddr.(*net.IPNet)
 		if !ok {
@@ -211,8 +210,7 @@ func (c *DockerContainerizer) ContainerGetIPsByInterface(id string, hostInterfac
 
 		// Iterate over the container interfaces
 		for _, ci := range containerInterfaces {
-
-			// Retrieve the corresponding the interface IPs
+			// Retrieve the corresponding interface IPs
 			containerIPs, err := ci.Addrs()
 			if err != nil {
 				return ips, err
@@ -220,7 +218,6 @@ func (c *DockerContainerizer) ContainerGetIPsByInterface(id string, hostInterfac
 
 			// Iterate over the interface IPs
 			for _, containerIPAddr := range containerIPs {
-
 				// Retrieve container interface ip
 				ip, ok := containerIPAddr.(*net.IPNet)
 				if !ok {

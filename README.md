@@ -147,7 +147,7 @@ Ip masquerading management by the iptable hook is activated by default. You can 
 
 This hook simply allows to force a user network for the container to join at startup. For now, the name of the user network to join should match the name of the task framework.
 
-Inside the task, the hook will be force the network mode to "USER", and the network name will be injected. When launching the container, this network name is retrieved and linked to the container.
+Inside the task, the hook will force the network mode to "USER", and the network name will be injected. When launching the container, this network name is retrieved and linked to the container.
 
 ## Health checks
 

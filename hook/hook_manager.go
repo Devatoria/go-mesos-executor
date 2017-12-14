@@ -81,7 +81,7 @@ func (m *Manager) sortByPriority() {
 
 // RegisterHooks registers a list of hooks on the given "when" (pre-create, ...)
 // It throws an error in case of the given "when" is incorrect
-func (m *Manager) RegisterHooks(hooks ...*Hook) error {
+func (m *Manager) RegisterHooks(hooks ...*Hook) {
 	for _, hook := range hooks {
 		// Pass on disabled hooks
 		if _, ok := m.EnabledHooks[hook.Name]; !ok {
@@ -94,8 +94,6 @@ func (m *Manager) RegisterHooks(hooks ...*Hook) error {
 
 	// Re-sort slices by priority
 	m.sortByPriority()
-
-	return nil
 }
 
 // RunPreCreateHooks runs all pre-create hooks of the given manager

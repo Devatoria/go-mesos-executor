@@ -53,7 +53,7 @@ var ACLHook = Hook{
 	RunPreStop: func(c container.Containerizer, taskInfo *mesos.TaskInfo, frameworkInfo *mesos.FrameworkInfo, containerID string) error {
 		// Do not execute the hook if we are not on bridged network
 		network := taskInfo.GetContainer().GetDocker().GetNetwork()
-		if network == mesos.ContainerInfo_DockerInfo_NONE || network == mesos.ContainerInfo_DockerInfo_BRIDGE {
+		if network != mesos.ContainerInfo_DockerInfo_BRIDGE && network != mesos.ContainerInfo_DockerInfo_USER {
 			logger.GetInstance().Warn("ACL hook does not need to remove iptables rules if network mode is not bridge or user")
 
 			return nil

@@ -183,7 +183,7 @@ func (e *Executor) Execute() error {
 					logger.GetInstance().Error("EOF error while decoding event.")
 					break
 				}
-				e.handleKill(nil)
+				_ = e.handleKill(nil)
 				return err
 			}
 
@@ -193,7 +193,7 @@ func (e *Executor) Execute() error {
 					logger.GetInstance().Error("EOF error while handling event.")
 					break
 				}
-				e.handleKill(nil)
+				_ = e.handleKill(nil)
 				return err
 			}
 		}

@@ -79,15 +79,15 @@ func (s *HookManagerTestSuite) TestNewManager() {
 // Check that hook is added into slices when registering
 func (s *HookManagerTestSuite) TestRegister() {
 	// Check hooks registering
-	assert.Nil(s.T(), s.manager.RegisterHooks(s.hook))
+	s.manager.RegisterHooks(s.hook)
 	assert.Equal(s.T(), s.hook, s.manager.Hooks[0])
 
 	// A disabled hook should not be added into a run slice
-	assert.Nil(s.T(), s.manager.RegisterHooks(s.disabledHook))
+	s.manager.RegisterHooks(s.disabledHook)
 	assert.NotContains(s.T(), s.manager.Hooks, s.disabledHook)
 
 	// A prioritized hook should be placed before all the others in order to be ran before
-	assert.Nil(s.T(), s.manager.RegisterHooks(s.priorityHook))
+	s.manager.RegisterHooks(s.priorityHook)
 	assert.Equal(s.T(), []*Hook{s.priorityHook, s.hook}, s.manager.Hooks)
 }
 
