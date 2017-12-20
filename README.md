@@ -93,7 +93,6 @@ Once the container is started, you can do the following:
 Please note that the link name is equal to the container task ID.
 
 The hook uses the `proc_path` configuration to retrieve the container process network namespace file and the `netns.path` to retrieve the netns tool directory (by default: `/var/run/netns`).
-=======
 
 ### Iptables hook
 
@@ -111,7 +110,7 @@ iptables:
   container_bridge_interface: docker0
 ```
 
-The hook needs the container bridge interface name for specifying the interface in the iptable rules. Note that this hook will only work with bridge network mode.
+The hook needs the container bridge interface name for specifying the interface in the iptable rules. Note that this hook will only work with bridge or user network mode. The bridge interface name is also used to retrieve the IP of the container on the bridge network. To find the correct IP, we look at the container interfaces and return the IPs matching the brigde network. This is particurlarly useful since in some configuration the bridge IP is not directly visible from the container info.
 
 Other optional parameters can be configured :
 ```yaml
@@ -143,6 +142,12 @@ Ip forwarding management by the iptable hook is activated by default. You can di
  * -A POSTROUTING -s 172.17.0.2/32 -d 172.17.0.2/32 -p tcp -m tcp --dport 80 -j MASQUERADE
 
 Ip masquerading management by the iptable hook is activated by default. You can disable it by setting **ip_masquerading: false** in the iptables hook configuration.
+
+### Network hook
+
+This hook simply allows to force a user network for the container to join at startup. For now, the name of the user network to join should match the name of the task framework.
+
+Inside the task, the hook will force the network mode to "USER", and the network name will be injected. When launching the container, this network name is retrieved and linked to the container.
 
 ## Health checks
 

@@ -66,13 +66,13 @@ func (s *ExecutorTestSuite) SetupTest() {
 	s.containerizer = &types.FakeContainerizer{}
 
 	// Error hook
-	ferr := func(c container.Containerizer, t *mesos.TaskInfo, containerID string) error {
+	ferr := func(c container.Containerizer, t *mesos.TaskInfo, f *mesos.FrameworkInfo, containerID string) error {
 		return fmt.Errorf("An error")
 	}
 	s.errorHook = &hook.Hook{
 		Name:     "error",
 		Priority: 0,
-		RunPreCreate: func(c container.Containerizer, t *mesos.TaskInfo) error {
+		RunPreCreate: func(c container.Containerizer, t *mesos.TaskInfo, f *mesos.FrameworkInfo) error {
 			return fmt.Errorf("An error")
 		},
 		RunPreRun:   ferr,
@@ -458,14 +458,14 @@ func (s *ExecutorTestSuite) TestTearDown() {
 
 	// Patch functions in order to catch calls
 	runPreStopHooksCalled := false
-	monkey.PatchInstanceMethod(reflect.TypeOf(s.executor.HookManager), "RunPreStopHooks", func(_ *hook.Manager, c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
+	monkey.PatchInstanceMethod(reflect.TypeOf(s.executor.HookManager), "RunPreStopHooks", func(_ *hook.Manager, c container.Containerizer, taskInfo *mesos.TaskInfo, frameworkInfo *mesos.FrameworkInfo, containerID string) error {
 		runPreStopHooksCalled = true
 
 		return nil
 	})
 
 	runPostStopHooksCalled := false
-	monkey.PatchInstanceMethod(reflect.TypeOf(s.executor.HookManager), "RunPostStopHooks", func(_ *hook.Manager, c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
+	monkey.PatchInstanceMethod(reflect.TypeOf(s.executor.HookManager), "RunPostStopHooks", func(_ *hook.Manager, c container.Containerizer, info *mesos.TaskInfo, frameworkInfo *mesos.FrameworkInfo, containerID string) error {
 		runPostStopHooksCalled = true
 
 		return nil
@@ -529,14 +529,14 @@ func (s *ExecutorTestSuite) TestThrowError() {
 
 	// Patch functions in order to catch calls
 	runPreStopHooksCalled := false
-	monkey.PatchInstanceMethod(reflect.TypeOf(s.executor.HookManager), "RunPreStopHooks", func(_ *hook.Manager, c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
+	monkey.PatchInstanceMethod(reflect.TypeOf(s.executor.HookManager), "RunPreStopHooks", func(_ *hook.Manager, c container.Containerizer, info *mesos.TaskInfo, frameworkInfo *mesos.FrameworkInfo, containerID string) error {
 		runPreStopHooksCalled = true
 
 		return nil
 	})
 
 	runPostStopHooksCalled := false
-	monkey.PatchInstanceMethod(reflect.TypeOf(s.executor.HookManager), "RunPostStopHooks", func(_ *hook.Manager, c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
+	monkey.PatchInstanceMethod(reflect.TypeOf(s.executor.HookManager), "RunPostStopHooks", func(_ *hook.Manager, c container.Containerizer, info *mesos.TaskInfo, frameworkInfo *mesos.FrameworkInfo, containerID string) error {
 		runPostStopHooksCalled = true
 
 		return nil

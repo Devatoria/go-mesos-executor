@@ -183,7 +183,7 @@ func (e *Executor) Execute() error {
 					logger.GetInstance().Error("EOF error while decoding event.")
 					break
 				}
-				e.handleKill(nil)
+				_ = e.handleKill(nil)
 				return err
 			}
 
@@ -193,7 +193,7 @@ func (e *Executor) Execute() error {
 					logger.GetInstance().Error("EOF error while handling event.")
 					break
 				}
-				e.handleKill(nil)
+				_ = e.handleKill(nil)
 				return err
 			}
 		}
@@ -243,7 +243,7 @@ func (e *Executor) handleLaunch(ev *executor.Event) error {
 		TaskInfo:       e.TaskInfo,
 	}
 
-	err = e.HookManager.RunPreCreateHooks(e.Containerizer, &e.TaskInfo)
+	err = e.HookManager.RunPreCreateHooks(e.Containerizer, &e.TaskInfo, &e.FrameworkInfo)
 	if err != nil {
 		return e.throwError(fmt.Errorf("error while running pre-create hooks: %v", err))
 	}
@@ -256,7 +256,7 @@ func (e *Executor) handleLaunch(ev *executor.Event) error {
 	e.ContainerID = containerID
 
 	// Run pre-run hooks
-	err = e.HookManager.RunPreRunHooks(e.Containerizer, &e.TaskInfo, e.ContainerID)
+	err = e.HookManager.RunPreRunHooks(e.Containerizer, &e.TaskInfo, &e.FrameworkInfo, e.ContainerID)
 	if err != nil {
 		return e.throwError(fmt.Errorf("error while running pre-run hooks: %v", err))
 	}
@@ -268,7 +268,7 @@ func (e *Executor) handleLaunch(ev *executor.Event) error {
 	}
 
 	// Run post-run hooks
-	err = e.HookManager.RunPostRunHooks(e.Containerizer, &e.TaskInfo, e.ContainerID)
+	err = e.HookManager.RunPostRunHooks(e.Containerizer, &e.TaskInfo, &e.FrameworkInfo, e.ContainerID)
 	if err != nil {
 		return e.throwError(fmt.Errorf("error while running post-run hooks: %v", err))
 	}
@@ -458,9 +458,9 @@ func (e *Executor) tearDown() {
 		e.HealthChecker.Quit <- struct{}{}
 	}
 
-	e.HookManager.RunPreStopHooks(e.Containerizer, &e.TaskInfo, e.ContainerID)
+	e.HookManager.RunPreStopHooks(e.Containerizer, &e.TaskInfo, &e.FrameworkInfo, e.ContainerID)
 	e.Containerizer.ContainerStop(e.ContainerID)
-	e.HookManager.RunPostStopHooks(e.Containerizer, &e.TaskInfo, e.ContainerID)
+	e.HookManager.RunPostStopHooks(e.Containerizer, &e.TaskInfo, &e.FrameworkInfo, e.ContainerID)
 }
 
 // waitContainer waits for the executor container to stop,

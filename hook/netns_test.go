@@ -17,10 +17,11 @@ import (
 
 type NetnsHookTestSuite struct {
 	suite.Suite
-	c        *types.FakeContainerizer
-	hook     Hook
-	root     string
-	taskInfo *mesos.TaskInfo
+	c             *types.FakeContainerizer
+	hook          Hook
+	root          string
+	taskInfo      *mesos.TaskInfo
+	frameworkInfo *mesos.FrameworkInfo
 }
 
 func (s *NetnsHookTestSuite) SetupTest() {
@@ -43,7 +44,7 @@ func (s *NetnsHookTestSuite) TearDownTest() {
 func (s *NetnsHookTestSuite) TestNetnsHookExecute() {
 	defer monkey.UnpatchAll()
 
-	assert.Error(s.T(), s.hook.RunPostRun(s.c, s.taskInfo, "fakeContainerID")) // Should return an error (unexisting root path)
+	assert.Error(s.T(), s.hook.RunPostRun(s.c, s.taskInfo, s.frameworkInfo, "fakeContainerID")) // Should return an error (unexisting root path)
 
 	// Patch viper in order to return a fake netns path
 	var guard *monkey.PatchGuard
@@ -59,11 +60,11 @@ func (s *NetnsHookTestSuite) TestNetnsHookExecute() {
 		}
 	})
 
-	assert.Nil(s.T(), s.hook.RunPostRun(s.c, s.taskInfo, "fakeContainerID"))                                       // Should return nil
+	assert.Nil(s.T(), s.hook.RunPostRun(s.c, s.taskInfo, s.frameworkInfo, "fakeContainerID"))                      // Should return nil
 	assert.True(s.T(), exists(fmt.Sprintf("%s/%s", viper.GetString("netns.path"), s.taskInfo.TaskID.GetValue())))  // Should have created the netns folder and link
-	assert.Nil(s.T(), s.hook.RunPostStop(s.c, s.taskInfo, "fakeContainerID"))                                      // Should return nil
+	assert.Nil(s.T(), s.hook.RunPostStop(s.c, s.taskInfo, s.frameworkInfo, "fakeContainerID"))                     // Should return nil
 	assert.False(s.T(), exists(fmt.Sprintf("%s/%s", viper.GetString("netns.path"), s.taskInfo.TaskID.GetValue()))) // Should have removed the task symlink
-	assert.Error(s.T(), s.hook.RunPostStop(s.c, s.taskInfo, "fakeContainerID"))                                    // Should return an error (unexisting link)
+	assert.Error(s.T(), s.hook.RunPostStop(s.c, s.taskInfo, s.frameworkInfo, "fakeContainerID"))                   // Should return an error (unexisting link)
 }
 
 func TestNetnsHookSuite(t *testing.T) {

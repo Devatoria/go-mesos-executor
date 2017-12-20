@@ -19,6 +19,7 @@ import (
 type ACLHookTestSuite struct {
 	suite.Suite
 	c                 *types.FakeContainerizer
+	frameworkInfo     *mesos.FrameworkInfo
 	hook              Hook
 	hostNamespace     netns.NsHandle
 	isolatedNamespace netns.NsHandle
@@ -80,7 +81,7 @@ func (s *ACLHookTestSuite) TearDownTest() {
 }
 
 // Check that:
-// - an error is thrown if network is not set to bridged
+// - an error is thrown if network is not set to bridge or user
 // - nothing is done if the label is absent from info
 // - an error is thrown if label port index does not match port mapping
 // - an error is thrown if label has no value
@@ -96,57 +97,57 @@ func (s *ACLHookTestSuite) TestACLHookRunPostRun() {
 	baseOutputRule, _ := s.iptablesDriver.List("filter", "OUTPUT")
 
 	// Injection should not be executed if the network is not in bridge mode
-	info := &mesos.TaskInfo{}
-	assert.Nil(s.T(), s.hook.RunPostRun(s.c, info, ""))
+	taskInfo := &mesos.TaskInfo{}
+	assert.Nil(s.T(), s.hook.RunPostRun(s.c, taskInfo, s.frameworkInfo, ""))
 	rules, _ := s.iptablesDriver.List("filter", "INPUT")
 	assert.Subset(s.T(), baseInputRule, rules)
 
 	// Injection should be skipped if label is not present
-	info.Container = &mesos.ContainerInfo{
+	taskInfo.Container = &mesos.ContainerInfo{
 		Docker: &mesos.ContainerInfo_DockerInfo{
 			Network: mesos.ContainerInfo_DockerInfo_BRIDGE.Enum(),
 		},
 	}
-	assert.Nil(s.T(), s.hook.RunPostRun(s.c, info, ""))
+	assert.Nil(s.T(), s.hook.RunPostRun(s.c, taskInfo, s.frameworkInfo, ""))
 	rules, _ = s.iptablesDriver.List("filter", "INPUT")
 	assert.Subset(s.T(), baseInputRule, rules)
 
 	// Injection should return an error if port index does not match port configuration
-	info.Labels = &mesos.Labels{
+	taskInfo.Labels = &mesos.Labels{
 		Labels: []mesos.Label{
 			mesos.Label{
 				Key: "EXECUTOR_0_ACL",
 			},
 		},
 	}
-	assert.Error(s.T(), s.hook.RunPostRun(s.c, info, ""))
+	assert.Error(s.T(), s.hook.RunPostRun(s.c, taskInfo, s.frameworkInfo, ""))
 	rules, _ = s.iptablesDriver.List("filter", "INPUT")
 	assert.Subset(s.T(), baseInputRule, rules)
 
 	// Injection should return error if label has no value
 	protocol := "tcp"
-	info.Container.Docker.PortMappings = []mesos.ContainerInfo_DockerInfo_PortMapping{
+	taskInfo.Container.Docker.PortMappings = []mesos.ContainerInfo_DockerInfo_PortMapping{
 		mesos.ContainerInfo_DockerInfo_PortMapping{
 			ContainerPort: 80,
 			HostPort:      10000,
 			Protocol:      &protocol,
 		},
 	}
-	assert.Error(s.T(), s.hook.RunPostRun(s.c, info, ""))
+	assert.Error(s.T(), s.hook.RunPostRun(s.c, taskInfo, s.frameworkInfo, ""))
 	rules, _ = s.iptablesDriver.List("filter", "INPUT")
 	assert.Subset(s.T(), baseInputRule, rules)
 
 	// Injection should return an error if one of the given IP is invalid
 	labelValue := "8.8.8.8,invalidIP"
-	info.Labels.Labels[0].Value = &labelValue
-	assert.Error(s.T(), s.hook.RunPostRun(s.c, info, ""))
+	taskInfo.Labels.Labels[0].Value = &labelValue
+	assert.Error(s.T(), s.hook.RunPostRun(s.c, taskInfo, s.frameworkInfo, ""))
 	rules, _ = s.iptablesDriver.List("filter", "INPUT")
 	assert.Subset(s.T(), baseInputRule, rules)
 
 	// Injection should be okay
 	labelValue = "8.8.8.8,10.0.0.0/24"
-	info.Labels.Labels[0].Value = &labelValue
-	assert.Nil(s.T(), s.hook.RunPostRun(s.c, info, ""))
+	taskInfo.Labels.Labels[0].Value = &labelValue
+	assert.Nil(s.T(), s.hook.RunPostRun(s.c, taskInfo, s.frameworkInfo, ""))
 	rules, _ = s.iptablesDriver.List("filter", "INPUT")
 	assert.Subset(s.T(),
 		append(
@@ -160,7 +161,7 @@ func (s *ACLHookTestSuite) TestACLHookRunPostRun() {
 
 	// Acl is done for all interfaces if not specified
 	s.externalInterface = ""
-	assert.Nil(s.T(), s.hook.RunPostRun(s.c, info, ""))
+	assert.Nil(s.T(), s.hook.RunPostRun(s.c, taskInfo, s.frameworkInfo, ""))
 	rules, _ = s.iptablesDriver.List("filter", "INPUT")
 	assert.Subset(s.T(),
 		append(
@@ -175,19 +176,19 @@ func (s *ACLHookTestSuite) TestACLHookRunPostRun() {
 
 	// Error is thrown if chain does not exist
 	s.aclChain = "UNKNOWNCHAIN"
-	assert.Error(s.T(), s.hook.RunPostRun(s.c, info, ""))
+	assert.Error(s.T(), s.hook.RunPostRun(s.c, taskInfo, s.frameworkInfo, ""))
 	rules, _ = s.iptablesDriver.List("filter", "INPUT")
 	assert.Subset(s.T(), baseInputRule, rules)
 
 	// Error is thrown if chain is forward
 	s.aclChain = "FORWARD"
-	assert.Error(s.T(), s.hook.RunPostRun(s.c, info, ""))
+	assert.Error(s.T(), s.hook.RunPostRun(s.c, taskInfo, s.frameworkInfo, ""))
 	rules, _ = s.iptablesDriver.List("filter", "FORWARD")
 	assert.Subset(s.T(), baseForwardRule, rules)
 
 	// Error is thrown if chain is output
 	s.aclChain = "OUTPUT"
-	assert.Error(s.T(), s.hook.RunPostRun(s.c, info, ""))
+	assert.Error(s.T(), s.hook.RunPostRun(s.c, taskInfo, s.frameworkInfo, ""))
 	rules, _ = s.iptablesDriver.List("filter", "OUTPUT")
 	assert.Subset(s.T(), baseOutputRule, rules)
 }
@@ -200,8 +201,8 @@ func (s *ACLHookTestSuite) TestACLHookRunPreStop() {
 	referenceInputRule, _ := s.iptablesDriver.List("filter", "INPUT")
 
 	// Removing should not be executed if the network is not in bridge mode
-	info := &mesos.TaskInfo{}
-	assert.Nil(s.T(), s.hook.RunPreStop(s.c, info, ""))
+	taskInfo := &mesos.TaskInfo{}
+	assert.Nil(s.T(), s.hook.RunPreStop(s.c, taskInfo, s.frameworkInfo, ""))
 
 	// Execute post run acl hook to inject iptables
 	protocol := "tcp"
@@ -214,7 +215,7 @@ func (s *ACLHookTestSuite) TestACLHookRunPreStop() {
 			},
 		},
 	}
-	info = &mesos.TaskInfo{
+	taskInfo = &mesos.TaskInfo{
 		Container: &mesos.ContainerInfo{
 			Docker: &mesos.ContainerInfo_DockerInfo{
 				Network: mesos.ContainerInfo_DockerInfo_BRIDGE.Enum(),
@@ -229,10 +230,10 @@ func (s *ACLHookTestSuite) TestACLHookRunPreStop() {
 		},
 		Labels: &label,
 	}
-	s.hook.RunPostRun(s.c, info, "")
+	s.hook.RunPostRun(s.c, taskInfo, s.frameworkInfo, "")
 
 	// Execute remove acl hook to remove injected iptables
-	assert.Nil(s.T(), s.hook.RunPreStop(s.c, info, ""))
+	assert.Nil(s.T(), s.hook.RunPreStop(s.c, taskInfo, s.frameworkInfo, ""))
 	inputRules, _ := s.iptablesDriver.List("filter", "INPUT")
 
 	assert.Equal(

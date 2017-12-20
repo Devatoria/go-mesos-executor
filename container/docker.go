@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Devatoria/go-mesos-executor/logger"
+	"github.com/Devatoria/go-mesos-executor/namespace"
 
 	docker "github.com/fsouza/go-dockerclient"
 	mesos "github.com/mesos/mesos-go/api/v1/lib"
@@ -53,7 +54,11 @@ func (c *DockerContainerizer) ContainerCreate(info Info) (string, error) {
 	case mesos.ContainerInfo_DockerInfo_NONE:
 		networkMode = "none"
 	case mesos.ContainerInfo_DockerInfo_USER:
-		networkMode = "user"
+		if len(info.TaskInfo.Container.NetworkInfos) > 0 {
+			networkMode = *info.TaskInfo.Container.NetworkInfos[0].Name
+		} else {
+			return "", fmt.Errorf("Could not find a user network to use")
+		}
 	default:
 		return "", fmt.Errorf("Invalid network mode")
 	}
@@ -160,23 +165,71 @@ func (c *DockerContainerizer) ContainerGetPID(id string) (int, error) {
 	return con.State.Pid, nil
 }
 
-// ContainerGetIPs returns the IPs of the container in the different networks.
-// If the container is in host network, the function will return an empty map.
-func (c *DockerContainerizer) ContainerGetIPs(id string) (map[string]net.IP, error) {
-	ips := make(map[string]net.IP)
+// ContainerGetIPsByInterface returns the IPs of the container in the different networks.
+// This is done by entering the container networking namespace, and returning the Ips that matches this interface.
+func (c *DockerContainerizer) ContainerGetIPsByInterface(id string, hostInterfaceName string) ([]net.IP, error) {
+	ips := []net.IP{}
+
+	// Retrieve container informations
 	con, err := c.Client.InspectContainer(id)
 	if err != nil {
 		return ips, err
 	}
 
-	for name, conf := range con.NetworkSettings.Networks {
-		if name != "host" {
-			stringIP := conf.IPAddress
-			ip := net.ParseIP(stringIP)
-			if ip == nil {
-				return ips, fmt.Errorf("Invalid container IP: %s", stringIP)
+	// Retrieve the host interface
+	hostInterface, err := net.InterfaceByName(hostInterfaceName)
+	if err != nil {
+		return ips, err
+	}
+
+	// Retrieve the host interfaceIP
+	hostInterfaceIPs, err := hostInterface.Addrs()
+	if err != nil {
+		return ips, err
+	}
+
+	// Enter container network namespace
+	namespace.EnterNetworkNamespace(con.State.Pid)
+
+	// Exit the container network namespace when we are done
+	defer namespace.ExitNetworkNamespace()
+
+	// Iterate over the host interface IPs
+	for _, hostIPAddr := range hostInterfaceIPs {
+		// Retrieve the network corresponding to the host interface ip
+		hostIPNet, ok := hostIPAddr.(*net.IPNet)
+		if !ok {
+			return ips, fmt.Errorf("Could not retrieve the host interface IP")
+		}
+
+		// Retrieve all container interfaces
+		containerInterfaces, err := net.Interfaces()
+		if err != nil {
+			return ips, err
+		}
+
+		// Iterate over the container interfaces
+		for _, ci := range containerInterfaces {
+			// Retrieve the corresponding interface IPs
+			containerIPs, err := ci.Addrs()
+			if err != nil {
+				return ips, err
 			}
-			ips[name] = ip
+
+			// Iterate over the interface IPs
+			for _, containerIPAddr := range containerIPs {
+				// Retrieve container interface ip
+				ip, ok := containerIPAddr.(*net.IPNet)
+				if !ok {
+					return ips, fmt.Errorf("Could not retrieve containers network interface ip")
+				}
+
+				// Check if the interface ip match the host interface network
+				if hostIPNet.Contains(ip.IP) {
+					// Add the container IP to the result if it does match
+					ips = append(ips, ip.IP)
+				}
+			}
 		}
 	}
 

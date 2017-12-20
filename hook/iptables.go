@@ -32,10 +32,11 @@ var iptablesHookContainerIPCache = sync.Map{}
 var IptablesHook = Hook{
 	Name:     "iptables",
 	Priority: 0,
-	RunPostRun: func(c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
-		// Do not execute the hook if we are not on bridged network
-		if info.GetContainer().GetDocker().GetNetwork() != mesos.ContainerInfo_DockerInfo_BRIDGE {
-			logger.GetInstance().Warn("Insert Iptables hook can't inject iptables rules if network mode is not bridged")
+	RunPostRun: func(c container.Containerizer, taskInfo *mesos.TaskInfo, frameworkInfo *mesos.FrameworkInfo, containerID string) error {
+		// Do not execute the hook if we are not on bridged or user network
+		network := taskInfo.GetContainer().GetDocker().GetNetwork()
+		if network != mesos.ContainerInfo_DockerInfo_BRIDGE && network != mesos.ContainerInfo_DockerInfo_USER {
+			logger.GetInstance().Warn("Iptables hook can't inject iptables rules if network mode is not bridge or user")
 
 			return nil
 		}
@@ -47,20 +48,27 @@ var IptablesHook = Hook{
 			return err
 		}
 
-		portMappings := info.GetContainer().GetDocker().GetPortMappings()
+		portMappings := taskInfo.GetContainer().GetDocker().GetPortMappings()
+
+		// Get docker interface
+		containerInterface := viper.GetString("iptables.container_bridge_interface")
+		if containerInterface == "" {
+			return fmt.Errorf("could not retrieve container brigde interface")
+		}
 
 		// Get container ip
-		containerIPs, err := c.ContainerGetIPs(containerID)
+		containerIPs, err := c.ContainerGetIPsByInterface(containerID, containerInterface)
 		if err != nil {
 			return err
 		}
 		iptablesHookContainerIPCache.Store(containerID, containerIPs)
 
-		return generateIptables(containerIPs, portMappings, driver, driver.Append, true)
+		return generateIptables(containerIPs, portMappings, containerInterface, driver, driver.Append, true)
 	},
-	RunPreStop: func(c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
-		// Do not execute the hook if we are not on bridged network
-		if info.GetContainer().GetDocker().GetNetwork() != mesos.ContainerInfo_DockerInfo_BRIDGE {
+	RunPreStop: func(c container.Containerizer, taskInfo *mesos.TaskInfo, frameworkInfo *mesos.FrameworkInfo, containerID string) error {
+		// Do not execute the hook if we are not on bridged or user network
+		network := taskInfo.GetContainer().GetDocker().GetNetwork()
+		if network == mesos.ContainerInfo_DockerInfo_NONE || network == mesos.ContainerInfo_DockerInfo_HOST {
 			logger.GetInstance().Warn("Iptables hook does not need to remove iptables rules if network mode is not bridged")
 
 			return nil
@@ -73,7 +81,7 @@ var IptablesHook = Hook{
 			return err
 		}
 
-		portMappings := info.GetContainer().GetDocker().GetPortMappings()
+		portMappings := taskInfo.GetContainer().GetDocker().GetPortMappings()
 
 		// Retrieve container IPs from cache
 		ipsCacheValue, ok := iptablesHookContainerIPCache.Load(containerID)
@@ -84,7 +92,7 @@ var IptablesHook = Hook{
 			)
 		}
 
-		containerIPs, ok := ipsCacheValue.(map[string]net.IP)
+		containerIPs, ok := ipsCacheValue.([]net.IP)
 		if !ok {
 			return fmt.Errorf(
 				"could not load ip from cache for container %s",
@@ -92,25 +100,26 @@ var IptablesHook = Hook{
 			)
 		}
 
-		return generateIptables(containerIPs, portMappings, driver, driver.Delete, false)
+		// Get docker interface
+		containerInterface := viper.GetString("iptables.container_bridge_interface")
+		if containerInterface == "" {
+			return fmt.Errorf("could not retrieve container brigde interface")
+		}
+
+		return generateIptables(containerIPs, portMappings, containerInterface, driver, driver.Delete, false)
 	},
 }
 
 // generateIptables generates all needed iptables for containers masquerading/ network forwarding.
 // The action function is called with each iptable generated.
 func generateIptables(
-	containerIPs map[string]net.IP,
+	containerIPs []net.IP,
 	portMappings []mesos.ContainerInfo_DockerInfo_PortMapping,
+	containerInterface string,
 	driver *iptables.IPTables,
 	action func(string, string, ...string) error,
 	stopOnError bool) error {
 	var err error
-
-	// Get docker interface
-	containerInterface := viper.GetString("iptables.container_bridge_interface")
-	if containerInterface == "" {
-		return fmt.Errorf("could not retrieve container brigde interface")
-	}
 
 	// Check if hook dedicated chains exist
 	preroutingChain := viper.GetString("iptables.chains.prerouting")

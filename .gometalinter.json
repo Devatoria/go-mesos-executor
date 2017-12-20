@@ -1,0 +1,11 @@
+{
+    "Disable": ["errcheck", "gocyclo"],
+    "Vendor": true,
+    "Deadline": "60s",
+    "Exclude": ["^*_test.go"],
+    "Linters": {
+        "gas": {
+            "Command": "gas -exclude=G104 ./..."
+        }
+    }
+}

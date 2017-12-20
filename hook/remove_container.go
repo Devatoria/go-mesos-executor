@@ -12,7 +12,7 @@ import (
 var RemoveContainerHook = Hook{
 	Name:     "removeContainer",
 	Priority: 0,
-	RunPostStop: func(c container.Containerizer, info *mesos.TaskInfo, containerID string) error {
+	RunPostStop: func(c container.Containerizer, taskInfo *mesos.TaskInfo, frameworkInfo *mesos.FrameworkInfo, containerID string) error {
 		logger.GetInstance().Info("Removing container",
 			zap.String("containerID", containerID),
 		)
