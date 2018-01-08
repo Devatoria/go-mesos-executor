@@ -190,8 +190,16 @@ func (c *Checker) checkHTTP(result chan bool) {
 		return
 	}
 
-	// Check status code: should be between 200 and 399
-	if response.StatusCode < 200 || response.StatusCode > 399 {
+	// Check status code within the taskinfo statuses field
+	var customStatusFound = false
+	for _, customStatus := range c.TaskInfo.GetHealthCheck().GetHTTP().GetStatuses() {
+		if uint32(response.StatusCode) == customStatus {
+			customStatusFound = true
+			break
+		}
+	}
+
+	if (response.StatusCode < 200 || response.StatusCode > 399) && !customStatusFound {
 		logger.GetInstance().Error("Unexpected status code",
 			zap.Int("code", response.StatusCode),
 		)
@@ -244,19 +252,41 @@ func (c *Checker) checkTCP(result chan bool) {
 // checkCommand enters the container mount namespace and
 // executes the given command using the containerizer
 func (c *Checker) checkCommand(result chan bool) {
-	var cmd []string
+	wrapperCmd := []string{"su"}
 	command := c.TaskInfo.GetHealthCheck().GetCommand()
 	// Must be wrapped into a shell process
 	if command.GetShell() {
-		cmd = []string{"/bin/sh", "-c", command.GetValue()}
-	} else {
-		cmd = []string{command.GetValue()}
+		wrapperCmd = append(wrapperCmd, []string{"-s", "/bin/sh"}...)
 	}
-
+	// Add user. Use root if no user specified
+	var user = command.GetUser()
+	if user == "" {
+		user = "root"
+	}
+	wrapperCmd = append(wrapperCmd, []string{"-", user}...)
+	// Construct the command that should be wrapped
+	var cmd []string
+	// Add environment variable
+	if len(command.GetEnvironment().GetVariables()) > 0 {
+		for _, envVar := range command.GetEnvironment().GetVariables() {
+			cmd = append([]string{envVar.Name + "=" + envVar.Value}, cmd...)
+		}
+	}
+	// Add command arguments
+	cmd = append(cmd, command.GetValue())
+	if len(command.GetArguments()) > 0 {
+		for _, arg := range command.GetArguments() {
+			cmd = append(cmd, arg)
+		}
+	}
+	// Wrap the command
+	wrapperCmd = append(wrapperCmd, "-c \"")
+	wrapperCmd = append(wrapperCmd, cmd...)
+	wrapperCmd = append(wrapperCmd, "\"")
 	// Prepare timeout context and all the stuff needed to call the containerizer
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(c.TaskInfo.GetHealthCheck().GetTimeoutSeconds())*time.Second)
 	defer cancel()
-	execResult := c.Containerizer.ContainerExec(ctx, c.ContainerID, cmd)
+	execResult := c.Containerizer.ContainerExec(ctx, c.ContainerID, wrapperCmd)
 	select {
 	case err := <-execResult: // Done (with or without error)
 		if err != nil {
